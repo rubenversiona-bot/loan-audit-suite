@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -104,7 +104,6 @@ function Indices() {
 
 function ValuesViewer({ indexes }: { indexes: { id: string; code: string; name: string }[] }) {
   const [selected, setSelected] = useState<string>("");
-  const [csvOpen, setCsvOpen] = useState(false);
   const sel = selected || indexes[0]?.id;
 
   const { data: values = [] } = useQuery({
@@ -136,13 +135,10 @@ function ValuesViewer({ indexes }: { indexes: { id: string; code: string; name: 
               <option key={i.id} value={i.id}>{i.name}</option>
             ))}
           </select>
-          <Button size="sm" variant="outline" onClick={() => setCsvOpen(true)}>
-            <Upload className="h-3 w-3 mr-1" /> Importar CSV
-          </Button>
+          {sel && <CsvImport indexId={sel} />}
         </div>
       </CardHeader>
       <CardContent>
-        {csvOpen && sel && <CsvImport indexId={sel} onDone={() => setCsvOpen(false)} />}
         {values.length === 0 ? (
           <p className="text-sm text-muted-foreground">Sin valores. Sincroniza con BDE o importa CSV.</p>
         ) : (
@@ -172,8 +168,9 @@ function ValuesViewer({ indexes }: { indexes: { id: string; code: string; name: 
   );
 }
 
-function CsvImport({ indexId, onDone }: { indexId: string; onDone: () => void }) {
+function CsvImport({ indexId }: { indexId: string }) {
   const [busy, setBusy] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
   const importFn = useServerFn(importIndexValues);
   const qc = useQueryClient();
   async function handle(file: File) {
@@ -204,7 +201,6 @@ function CsvImport({ indexId, onDone }: { indexId: string; onDone: () => void })
         toast.error(r.error ?? "Error importando");
       } else {
         toast.success(`${r.inserted} valores importados`);
-        onDone();
         qc.invalidateQueries({ queryKey: ["index-values"] });
       }
     } catch (e) {
@@ -214,11 +210,24 @@ function CsvImport({ indexId, onDone }: { indexId: string; onDone: () => void })
     }
   }
   return (
-    <div className="border rounded p-4 mb-4 bg-accent/30">
-      <p className="text-sm mb-2">Sube un CSV con formato <code>fecha,valor</code> por línea (fechas DD/MM/AAAA o AAAA-MM-DD).</p>
-      <input type="file" accept=".csv,text/csv" disabled={busy} onChange={(e) => e.target.files?.[0] && handle(e.target.files[0])} />
-      <Button variant="ghost" size="sm" onClick={onDone} className="ml-2">Cerrar</Button>
-    </div>
+    <>
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".csv,text/csv"
+        className="hidden"
+        disabled={busy}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.currentTarget.value = "";
+          if (file) void handle(file);
+        }}
+      />
+      <Button size="sm" variant="outline" disabled={busy} onClick={() => inputRef.current?.click()}>
+        {busy ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Upload className="h-3 w-3 mr-1" />}
+        Importar CSV
+      </Button>
+    </>
   );
 }
 
