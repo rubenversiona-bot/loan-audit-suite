@@ -98,7 +98,7 @@ function Detail() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `informe-pericial-${loan.debtor_name.replace(/\s+/g, "_")}.pdf`;
+      a.download = `informe-pericial-${loanData.debtor_name.replace(/\s+/g, "_")}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success("Informe descargado");
