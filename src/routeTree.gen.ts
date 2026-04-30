@@ -9,9 +9,23 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as PrestamosRouteImport } from './routes/prestamos'
+import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as PrestamosIndexRouteImport } from './routes/prestamos.index'
+import { Route as PrestamosNuevoRouteImport } from './routes/prestamos.nuevo'
 
+const PrestamosRoute = PrestamosRouteImport.update({
+  id: '/prestamos',
+  path: '/prestamos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DashboardRoute = DashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
@@ -22,35 +36,85 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PrestamosIndexRoute = PrestamosIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => PrestamosRoute,
+} as any)
+const PrestamosNuevoRoute = PrestamosNuevoRouteImport.update({
+  id: '/nuevo',
+  path: '/nuevo',
+  getParentRoute: () => PrestamosRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/dashboard': typeof DashboardRoute
+  '/prestamos': typeof PrestamosRouteWithChildren
+  '/prestamos/nuevo': typeof PrestamosNuevoRoute
+  '/prestamos/': typeof PrestamosIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/dashboard': typeof DashboardRoute
+  '/prestamos/nuevo': typeof PrestamosNuevoRoute
+  '/prestamos': typeof PrestamosIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/dashboard': typeof DashboardRoute
+  '/prestamos': typeof PrestamosRouteWithChildren
+  '/prestamos/nuevo': typeof PrestamosNuevoRoute
+  '/prestamos/': typeof PrestamosIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/auth'
+  fullPaths:
+    | '/'
+    | '/auth'
+    | '/dashboard'
+    | '/prestamos'
+    | '/prestamos/nuevo'
+    | '/prestamos/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth'
-  id: '__root__' | '/' | '/auth'
+  to: '/' | '/auth' | '/dashboard' | '/prestamos/nuevo' | '/prestamos'
+  id:
+    | '__root__'
+    | '/'
+    | '/auth'
+    | '/dashboard'
+    | '/prestamos'
+    | '/prestamos/nuevo'
+    | '/prestamos/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthRoute: typeof AuthRoute
+  DashboardRoute: typeof DashboardRoute
+  PrestamosRoute: typeof PrestamosRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/prestamos': {
+      id: '/prestamos'
+      path: '/prestamos'
+      fullPath: '/prestamos'
+      preLoaderRoute: typeof PrestamosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dashboard': {
+      id: '/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/auth': {
       id: '/auth'
       path: '/auth'
@@ -65,12 +129,42 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/prestamos/': {
+      id: '/prestamos/'
+      path: '/'
+      fullPath: '/prestamos/'
+      preLoaderRoute: typeof PrestamosIndexRouteImport
+      parentRoute: typeof PrestamosRoute
+    }
+    '/prestamos/nuevo': {
+      id: '/prestamos/nuevo'
+      path: '/nuevo'
+      fullPath: '/prestamos/nuevo'
+      preLoaderRoute: typeof PrestamosNuevoRouteImport
+      parentRoute: typeof PrestamosRoute
+    }
   }
 }
+
+interface PrestamosRouteChildren {
+  PrestamosNuevoRoute: typeof PrestamosNuevoRoute
+  PrestamosIndexRoute: typeof PrestamosIndexRoute
+}
+
+const PrestamosRouteChildren: PrestamosRouteChildren = {
+  PrestamosNuevoRoute: PrestamosNuevoRoute,
+  PrestamosIndexRoute: PrestamosIndexRoute,
+}
+
+const PrestamosRouteWithChildren = PrestamosRoute._addFileChildren(
+  PrestamosRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthRoute: AuthRoute,
+  DashboardRoute: DashboardRoute,
+  PrestamosRoute: PrestamosRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
