@@ -1,0 +1,1 @@
+UPDATE public.reference_indexes SET bde_series_code = 'ECB_FM' WHERE code IN ('EURIBOR_1M','EURIBOR_3M','EURIBOR_6M','EURIBOR_12M');
