@@ -180,19 +180,20 @@ function CsvImport({ indexId, onDone }: { indexId: string; onDone: () => void })
     setBusy(true);
     try {
       const text = await file.text();
-      const lines = text.split(/\r?\n/).filter(Boolean);
+      const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
       const parsed: { value_date: string; value: number }[] = [];
-      let skippedHeader = false;
       for (const line of lines) {
-        const [d, v] = line.split(/[,;\t]/).map((s) => s.trim());
+        const fields = parseCsvLine(line);
+        if (fields.length < 2) continue;
+        const d = fields[0].trim();
+        const v = fields[1].trim();
         if (!d || !v) continue;
         const date = parseDate(d);
-        const val = parseFloat(v.replace(",", "."));
+        const val = parseFloat(v.replace(/\./g, "").replace(",", "."));
         if (date && Number.isFinite(val)) {
           parsed.push({ value_date: date, value: val });
-        } else if (!skippedHeader) {
-          skippedHeader = true; // primera línea no parseable: cabecera
         }
+        // líneas no parseables (cabecera, separadores) se ignoran silenciosamente
       }
       if (parsed.length === 0) {
         toast.error("CSV vacío o formato inválido (esperado: fecha,valor por línea)");
