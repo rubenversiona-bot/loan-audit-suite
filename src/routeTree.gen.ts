@@ -9,38 +9,196 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as PrestamosRouteImport } from './routes/prestamos'
+import { Route as IndicesRouteImport } from './routes/indices'
+import { Route as DocumentosRouteImport } from './routes/documentos'
+import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as ConfiguracionRouteImport } from './routes/configuracion'
+import { Route as AuthRouteImport } from './routes/auth'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as PrestamosIndexRouteImport } from './routes/prestamos.index'
+import { Route as PrestamosNuevoRouteImport } from './routes/prestamos.nuevo'
+import { Route as PrestamosIdRouteImport } from './routes/prestamos.$id'
 
+const PrestamosRoute = PrestamosRouteImport.update({
+  id: '/prestamos',
+  path: '/prestamos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const IndicesRoute = IndicesRouteImport.update({
+  id: '/indices',
+  path: '/indices',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DocumentosRoute = DocumentosRouteImport.update({
+  id: '/documentos',
+  path: '/documentos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DashboardRoute = DashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConfiguracionRoute = ConfiguracionRouteImport.update({
+  id: '/configuracion',
+  path: '/configuracion',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PrestamosIndexRoute = PrestamosIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => PrestamosRoute,
+} as any)
+const PrestamosNuevoRoute = PrestamosNuevoRouteImport.update({
+  id: '/nuevo',
+  path: '/nuevo',
+  getParentRoute: () => PrestamosRoute,
+} as any)
+const PrestamosIdRoute = PrestamosIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => PrestamosRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
+  '/configuracion': typeof ConfiguracionRoute
+  '/dashboard': typeof DashboardRoute
+  '/documentos': typeof DocumentosRoute
+  '/indices': typeof IndicesRoute
+  '/prestamos': typeof PrestamosRouteWithChildren
+  '/prestamos/$id': typeof PrestamosIdRoute
+  '/prestamos/nuevo': typeof PrestamosNuevoRoute
+  '/prestamos/': typeof PrestamosIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
+  '/configuracion': typeof ConfiguracionRoute
+  '/dashboard': typeof DashboardRoute
+  '/documentos': typeof DocumentosRoute
+  '/indices': typeof IndicesRoute
+  '/prestamos/$id': typeof PrestamosIdRoute
+  '/prestamos/nuevo': typeof PrestamosNuevoRoute
+  '/prestamos': typeof PrestamosIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
+  '/configuracion': typeof ConfiguracionRoute
+  '/dashboard': typeof DashboardRoute
+  '/documentos': typeof DocumentosRoute
+  '/indices': typeof IndicesRoute
+  '/prestamos': typeof PrestamosRouteWithChildren
+  '/prestamos/$id': typeof PrestamosIdRoute
+  '/prestamos/nuevo': typeof PrestamosNuevoRoute
+  '/prestamos/': typeof PrestamosIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/auth'
+    | '/configuracion'
+    | '/dashboard'
+    | '/documentos'
+    | '/indices'
+    | '/prestamos'
+    | '/prestamos/$id'
+    | '/prestamos/nuevo'
+    | '/prestamos/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/auth'
+    | '/configuracion'
+    | '/dashboard'
+    | '/documentos'
+    | '/indices'
+    | '/prestamos/$id'
+    | '/prestamos/nuevo'
+    | '/prestamos'
+  id:
+    | '__root__'
+    | '/'
+    | '/auth'
+    | '/configuracion'
+    | '/dashboard'
+    | '/documentos'
+    | '/indices'
+    | '/prestamos'
+    | '/prestamos/$id'
+    | '/prestamos/nuevo'
+    | '/prestamos/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuthRoute: typeof AuthRoute
+  ConfiguracionRoute: typeof ConfiguracionRoute
+  DashboardRoute: typeof DashboardRoute
+  DocumentosRoute: typeof DocumentosRoute
+  IndicesRoute: typeof IndicesRoute
+  PrestamosRoute: typeof PrestamosRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/prestamos': {
+      id: '/prestamos'
+      path: '/prestamos'
+      fullPath: '/prestamos'
+      preLoaderRoute: typeof PrestamosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/indices': {
+      id: '/indices'
+      path: '/indices'
+      fullPath: '/indices'
+      preLoaderRoute: typeof IndicesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/documentos': {
+      id: '/documentos'
+      path: '/documentos'
+      fullPath: '/documentos'
+      preLoaderRoute: typeof DocumentosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dashboard': {
+      id: '/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/configuracion': {
+      id: '/configuracion'
+      path: '/configuracion'
+      fullPath: '/configuracion'
+      preLoaderRoute: typeof ConfiguracionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -48,21 +206,55 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/prestamos/': {
+      id: '/prestamos/'
+      path: '/'
+      fullPath: '/prestamos/'
+      preLoaderRoute: typeof PrestamosIndexRouteImport
+      parentRoute: typeof PrestamosRoute
+    }
+    '/prestamos/nuevo': {
+      id: '/prestamos/nuevo'
+      path: '/nuevo'
+      fullPath: '/prestamos/nuevo'
+      preLoaderRoute: typeof PrestamosNuevoRouteImport
+      parentRoute: typeof PrestamosRoute
+    }
+    '/prestamos/$id': {
+      id: '/prestamos/$id'
+      path: '/$id'
+      fullPath: '/prestamos/$id'
+      preLoaderRoute: typeof PrestamosIdRouteImport
+      parentRoute: typeof PrestamosRoute
+    }
   }
 }
 
+interface PrestamosRouteChildren {
+  PrestamosIdRoute: typeof PrestamosIdRoute
+  PrestamosNuevoRoute: typeof PrestamosNuevoRoute
+  PrestamosIndexRoute: typeof PrestamosIndexRoute
+}
+
+const PrestamosRouteChildren: PrestamosRouteChildren = {
+  PrestamosIdRoute: PrestamosIdRoute,
+  PrestamosNuevoRoute: PrestamosNuevoRoute,
+  PrestamosIndexRoute: PrestamosIndexRoute,
+}
+
+const PrestamosRouteWithChildren = PrestamosRoute._addFileChildren(
+  PrestamosRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuthRoute: AuthRoute,
+  ConfiguracionRoute: ConfiguracionRoute,
+  DashboardRoute: DashboardRoute,
+  DocumentosRoute: DocumentosRoute,
+  IndicesRoute: IndicesRoute,
+  PrestamosRoute: PrestamosRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}
