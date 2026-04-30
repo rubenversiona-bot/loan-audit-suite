@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { supabase } from "@/integrations/supabase/client";
 import { syncBdeIndex } from "@/server/bde.functions";
+import { importIndexValues } from "@/server/indices.functions";
 import { Loader2, RefreshCw, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { fmtDate } from "@/lib/format";
@@ -173,30 +174,40 @@ function ValuesViewer({ indexes }: { indexes: { id: string; code: string; name: 
 
 function CsvImport({ indexId, onDone }: { indexId: string; onDone: () => void }) {
   const [busy, setBusy] = useState(false);
+  const importFn = useServerFn(importIndexValues);
+  const qc = useQueryClient();
   async function handle(file: File) {
     setBusy(true);
     try {
       const text = await file.text();
-      const rows = text.split(/\r?\n/).filter(Boolean);
-      const parsed: { index_id: string; value_date: string; value: number; source: "csv" }[] = [];
-      for (const line of rows) {
-        const [d, v] = line.split(/[,;]/).map((s) => s.trim());
+      const lines = text.split(/\r?\n/).filter(Boolean);
+      const parsed: { value_date: string; value: number }[] = [];
+      let skippedHeader = false;
+      for (const line of lines) {
+        const [d, v] = line.split(/[,;\t]/).map((s) => s.trim());
         if (!d || !v) continue;
         const date = parseDate(d);
         const val = parseFloat(v.replace(",", "."));
-        if (date && Number.isFinite(val)) parsed.push({ index_id: indexId, value_date: date, value: val, source: "csv" });
+        if (date && Number.isFinite(val)) {
+          parsed.push({ value_date: date, value: val });
+        } else if (!skippedHeader) {
+          skippedHeader = true; // primera línea no parseable: cabecera
+        }
       }
       if (parsed.length === 0) {
         toast.error("CSV vacío o formato inválido (esperado: fecha,valor por línea)");
         return;
       }
-      const { error } = await supabase.from("index_values").upsert(parsed, { onConflict: "index_id,value_date" });
-      if (error) toast.error(error.message);
-      else {
-        toast.success(`${parsed.length} valores importados`);
+      const r = await importFn({ data: { indexId, rows: parsed, source: "csv" } });
+      if (!r.ok) {
+        toast.error(r.error ?? "Error importando");
+      } else {
+        toast.success(`${r.inserted} valores importados`);
         onDone();
-        location.reload();
+        qc.invalidateQueries({ queryKey: ["index-values"] });
       }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Error procesando CSV");
     } finally {
       setBusy(false);
     }
