@@ -180,19 +180,20 @@ function CsvImport({ indexId, onDone }: { indexId: string; onDone: () => void })
     setBusy(true);
     try {
       const text = await file.text();
-      const lines = text.split(/\r?\n/).filter(Boolean);
+      const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
       const parsed: { value_date: string; value: number }[] = [];
-      let skippedHeader = false;
       for (const line of lines) {
-        const [d, v] = line.split(/[,;\t]/).map((s) => s.trim());
+        const fields = parseCsvLine(line);
+        if (fields.length < 2) continue;
+        const d = fields[0].trim();
+        const v = fields[1].trim();
         if (!d || !v) continue;
         const date = parseDate(d);
-        const val = parseFloat(v.replace(",", "."));
+        const val = parseFloat(v.replace(/\./g, "").replace(",", "."));
         if (date && Number.isFinite(val)) {
           parsed.push({ value_date: date, value: val });
-        } else if (!skippedHeader) {
-          skippedHeader = true; // primera línea no parseable: cabecera
         }
+        // líneas no parseables (cabecera, separadores) se ignoran silenciosamente
       }
       if (parsed.length === 0) {
         toast.error("CSV vacío o formato inválido (esperado: fecha,valor por línea)");
@@ -227,4 +228,25 @@ function parseDate(s: string): string | null {
   m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
   if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
   return null;
+}
+
+// CSV parser que respeta comillas (para soportar "3,690" como un solo campo decimal)
+function parseCsvLine(line: string): string[] {
+  const out: string[] = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') { cur += '"'; i++; } else { inQuotes = false; }
+      } else cur += ch;
+    } else {
+      if (ch === '"') inQuotes = true;
+      else if (ch === "," || ch === ";" || ch === "\t") { out.push(cur); cur = ""; }
+      else cur += ch;
+    }
+  }
+  out.push(cur);
+  return out;
 }
