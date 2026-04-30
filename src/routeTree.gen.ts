@@ -10,20 +10,39 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as PrestamosRouteImport } from './routes/prestamos'
+import { Route as IndicesRouteImport } from './routes/indices'
+import { Route as DocumentosRouteImport } from './routes/documentos'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as ConfiguracionRouteImport } from './routes/configuracion'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PrestamosIndexRouteImport } from './routes/prestamos.index'
 import { Route as PrestamosNuevoRouteImport } from './routes/prestamos.nuevo'
+import { Route as PrestamosIdRouteImport } from './routes/prestamos.$id'
 
 const PrestamosRoute = PrestamosRouteImport.update({
   id: '/prestamos',
   path: '/prestamos',
   getParentRoute: () => rootRouteImport,
 } as any)
+const IndicesRoute = IndicesRouteImport.update({
+  id: '/indices',
+  path: '/indices',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DocumentosRoute = DocumentosRouteImport.update({
+  id: '/documentos',
+  path: '/documentos',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConfiguracionRoute = ConfiguracionRouteImport.update({
+  id: '/configuracion',
+  path: '/configuracion',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthRoute = AuthRouteImport.update({
@@ -46,19 +65,32 @@ const PrestamosNuevoRoute = PrestamosNuevoRouteImport.update({
   path: '/nuevo',
   getParentRoute: () => PrestamosRoute,
 } as any)
+const PrestamosIdRoute = PrestamosIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => PrestamosRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/configuracion': typeof ConfiguracionRoute
   '/dashboard': typeof DashboardRoute
+  '/documentos': typeof DocumentosRoute
+  '/indices': typeof IndicesRoute
   '/prestamos': typeof PrestamosRouteWithChildren
+  '/prestamos/$id': typeof PrestamosIdRoute
   '/prestamos/nuevo': typeof PrestamosNuevoRoute
   '/prestamos/': typeof PrestamosIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/configuracion': typeof ConfiguracionRoute
   '/dashboard': typeof DashboardRoute
+  '/documentos': typeof DocumentosRoute
+  '/indices': typeof IndicesRoute
+  '/prestamos/$id': typeof PrestamosIdRoute
   '/prestamos/nuevo': typeof PrestamosNuevoRoute
   '/prestamos': typeof PrestamosIndexRoute
 }
@@ -66,8 +98,12 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/configuracion': typeof ConfiguracionRoute
   '/dashboard': typeof DashboardRoute
+  '/documentos': typeof DocumentosRoute
+  '/indices': typeof IndicesRoute
   '/prestamos': typeof PrestamosRouteWithChildren
+  '/prestamos/$id': typeof PrestamosIdRoute
   '/prestamos/nuevo': typeof PrestamosNuevoRoute
   '/prestamos/': typeof PrestamosIndexRoute
 }
@@ -76,18 +112,35 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/configuracion'
     | '/dashboard'
+    | '/documentos'
+    | '/indices'
     | '/prestamos'
+    | '/prestamos/$id'
     | '/prestamos/nuevo'
     | '/prestamos/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth' | '/dashboard' | '/prestamos/nuevo' | '/prestamos'
+  to:
+    | '/'
+    | '/auth'
+    | '/configuracion'
+    | '/dashboard'
+    | '/documentos'
+    | '/indices'
+    | '/prestamos/$id'
+    | '/prestamos/nuevo'
+    | '/prestamos'
   id:
     | '__root__'
     | '/'
     | '/auth'
+    | '/configuracion'
     | '/dashboard'
+    | '/documentos'
+    | '/indices'
     | '/prestamos'
+    | '/prestamos/$id'
     | '/prestamos/nuevo'
     | '/prestamos/'
   fileRoutesById: FileRoutesById
@@ -95,7 +148,10 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthRoute: typeof AuthRoute
+  ConfiguracionRoute: typeof ConfiguracionRoute
   DashboardRoute: typeof DashboardRoute
+  DocumentosRoute: typeof DocumentosRoute
+  IndicesRoute: typeof IndicesRoute
   PrestamosRoute: typeof PrestamosRouteWithChildren
 }
 
@@ -108,11 +164,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PrestamosRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/indices': {
+      id: '/indices'
+      path: '/indices'
+      fullPath: '/indices'
+      preLoaderRoute: typeof IndicesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/documentos': {
+      id: '/documentos'
+      path: '/documentos'
+      fullPath: '/documentos'
+      preLoaderRoute: typeof DocumentosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dashboard': {
       id: '/dashboard'
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/configuracion': {
+      id: '/configuracion'
+      path: '/configuracion'
+      fullPath: '/configuracion'
+      preLoaderRoute: typeof ConfiguracionRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth': {
@@ -143,15 +220,24 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PrestamosNuevoRouteImport
       parentRoute: typeof PrestamosRoute
     }
+    '/prestamos/$id': {
+      id: '/prestamos/$id'
+      path: '/$id'
+      fullPath: '/prestamos/$id'
+      preLoaderRoute: typeof PrestamosIdRouteImport
+      parentRoute: typeof PrestamosRoute
+    }
   }
 }
 
 interface PrestamosRouteChildren {
+  PrestamosIdRoute: typeof PrestamosIdRoute
   PrestamosNuevoRoute: typeof PrestamosNuevoRoute
   PrestamosIndexRoute: typeof PrestamosIndexRoute
 }
 
 const PrestamosRouteChildren: PrestamosRouteChildren = {
+  PrestamosIdRoute: PrestamosIdRoute,
   PrestamosNuevoRoute: PrestamosNuevoRoute,
   PrestamosIndexRoute: PrestamosIndexRoute,
 }
@@ -163,7 +249,10 @@ const PrestamosRouteWithChildren = PrestamosRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthRoute: AuthRoute,
+  ConfiguracionRoute: ConfiguracionRoute,
   DashboardRoute: DashboardRoute,
+  DocumentosRoute: DocumentosRoute,
+  IndicesRoute: IndicesRoute,
   PrestamosRoute: PrestamosRouteWithChildren,
 }
 export const routeTree = rootRouteImport

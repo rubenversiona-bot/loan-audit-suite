@@ -15,16 +15,18 @@ export const generateExpertReport = createServerFn({ method: "POST" })
       .single();
     if (error || !loan) return { ok: false, error: "Préstamo no encontrado", base64: null };
 
-    const { data: events = [] } = await supabaseAdmin
+    const { data: eventsData } = await supabaseAdmin
       .from("loan_events")
       .select("*")
       .eq("loan_id", data.loanId)
       .order("event_date");
-    const { data: discs = [] } = await supabaseAdmin
+    const events = eventsData ?? [];
+    const { data: discsData } = await supabaseAdmin
       .from("discrepancies")
       .select("*")
       .eq("loan_id", data.loanId)
       .order("discrepancy_date");
+    const discs = discsData ?? [];
 
     const pdf = await PDFDocument.create();
     const font = await pdf.embedFont(StandardFonts.Helvetica);

@@ -66,6 +66,7 @@ function Detail() {
   });
 
   if (!loan) return <Loader2 className="h-6 w-6 animate-spin" />;
+  const loanData = loan;
 
   const schedule = generateSchedule({
     initialCapital: Number(loan.initial_capital),
