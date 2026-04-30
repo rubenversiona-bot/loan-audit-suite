@@ -1,38 +1,49 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 const InputSchema = z.object({ indexCode: z.string().min(1).max(64) });
 
-interface BdeObservation {
+interface Observation {
   date: string; // YYYY-MM-DD
   value: number;
 }
 
 /**
- * Sincroniza un índice con datos públicos del Banco de España.
- * Estrategia: el portal del BDE expone series como CSV en endpoints públicos
- * (sdw_business / Catálogo de Series). El formato es heterogéneo, así que
- * implementamos un adaptador que tolera fallos: si no logra parsear, devuelve
- * un error informativo y la UI sigue permitiendo carga manual / CSV.
+ * Sincroniza un índice de referencia con datos públicos.
  *
- * Endpoints conocidos (públicos, sin API key):
- *  - https://www.bde.es/webbe/es/estadisticas/compartido/datos/csv/<dataset>/<serie>.csv
- * Para no romper si el endpoint cambia, todo está envuelto en try/catch.
+ * Estrategia:
+ *  - Para Euríbor (1M, 3M, 6M, 12M) usamos el SDW del Banco Central Europeo,
+ *    que expone CSV estable y sin clave (mirror oficial usado también por BdE).
+ *  - Para IRPH/MIBOR no existe API abierta y fiable: devolvemos un mensaje
+ *    indicando que se debe importar por CSV manual.
  */
 export const syncBdeIndex = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((d) => InputSchema.parse(d))
   .handler(async ({ data }) => {
     try {
       const { data: idx, error: idxErr } = await supabaseAdmin
         .from("reference_indexes")
-        .select("id, code, bde_series_code, bde_dataset")
+        .select("id, code")
         .eq("code", data.indexCode)
         .maybeSingle();
 
       if (idxErr || !idx) return { ok: false, error: "Índice no encontrado", inserted: 0 };
-      if (!idx.bde_series_code) {
-        return { ok: false, error: "Este índice no tiene serie BDE configurada. Use carga manual o CSV.", inserted: 0 };
+
+      const ecbKey = ECB_SERIES[idx.code];
+      if (!ecbKey) {
+        return {
+          ok: false,
+          error: "Esta serie no está disponible vía API. Importa los valores oficiales mediante CSV (Banco de España publica boletines mensuales).",
+          inserted: 0,
+        };
+      }
+
+      const observations = await fetchEcbSeries(ecbKey);
+      if (observations.length === 0) {
+        return { ok: false, error: "La fuente no devolvió valores", inserted: 0 };
       }
 
       const { data: lastRow } = await supabaseAdmin
@@ -43,18 +54,17 @@ export const syncBdeIndex = createServerFn({ method: "POST" })
         .limit(1)
         .maybeSingle();
 
-      const observations = await fetchBdeSeries(idx.bde_series_code, idx.bde_dataset ?? "TI");
       const cutoff = lastRow?.value_date ? new Date(lastRow.value_date) : null;
       const fresh = cutoff ? observations.filter((o) => new Date(o.date) > cutoff) : observations;
-
       if (fresh.length === 0) return { ok: true, inserted: 0, message: "Sin nuevos valores" };
 
+      const synced_at = new Date().toISOString();
       const rows = fresh.map((o) => ({
         index_id: idx.id,
         value_date: o.date,
         value: o.value,
         source: "bde_api" as const,
-        synced_at: new Date().toISOString(),
+        synced_at,
       }));
 
       const { error: insErr } = await supabaseAdmin
@@ -64,80 +74,74 @@ export const syncBdeIndex = createServerFn({ method: "POST" })
       if (insErr) return { ok: false, error: insErr.message, inserted: 0 };
       return { ok: true, inserted: rows.length };
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Error desconocido sincronizando con BDE";
+      const msg = e instanceof Error ? e.message : "Error desconocido sincronizando";
       console.error("[syncBdeIndex]", msg);
       return { ok: false, error: msg, inserted: 0 };
     }
   });
 
-async function fetchBdeSeries(seriesCode: string, dataset: string): Promise<BdeObservation[]> {
-  // El BDE publica CSVs por serie. Probamos rutas conocidas.
-  const candidates = [
-    `https://www.bde.es/webbe/es/estadisticas/compartido/datos/csv/${dataset}/${seriesCode}.csv`,
-    `https://www.bde.es/webbde/es/estadis/infoest/series/${seriesCode}.csv`,
-  ];
+// Series Euribor en el SDW del BCE (FM = Financial Markets)
+const ECB_SERIES: Record<string, string> = {
+  EURIBOR_1M: "FM.M.U2.EUR.RT.MM.EURIBOR1MD_.HSTA",
+  EURIBOR_3M: "FM.M.U2.EUR.RT.MM.EURIBOR3MD_.HSTA",
+  EURIBOR_6M: "FM.M.U2.EUR.RT.MM.EURIBOR6MD_.HSTA",
+  EURIBOR_12M: "FM.M.U2.EUR.RT.MM.EURIBOR1YD_.HSTA",
+};
 
-  let csv: string | null = null;
-  for (const url of candidates) {
-    try {
-      const res = await fetch(url, { headers: { Accept: "text/csv,*/*" } });
-      if (res.ok) {
-        csv = await res.text();
-        if (csv && csv.length > 50) break;
-      }
-    } catch {
-      // probar siguiente
-    }
-  }
-  if (!csv) throw new Error("No se pudo obtener la serie del BDE (endpoint no disponible)");
-  return parseBdeCsv(csv);
+async function fetchEcbSeries(seriesKey: string): Promise<Observation[]> {
+  // El SDW del BCE devuelve CSV con cabeceras estándar.
+  const dataset = seriesKey.split(".")[0]; // "FM"
+  const rest = seriesKey.substring(dataset.length + 1);
+  const url = `https://data-api.ecb.europa.eu/service/data/${dataset}/${rest}?format=csvdata`;
+  const res = await fetch(url, { headers: { Accept: "text/csv" } });
+  if (!res.ok) throw new Error(`ECB SDW respondió ${res.status}`);
+  const csv = await res.text();
+  return parseEcbCsv(csv);
 }
 
-/**
- * Parser tolerante: BDE suele entregar líneas tipo "AAAA MMM,valor" o "DD/MM/AAAA;valor".
- * Soporta separadores , y ;, encabezados, y formatos numéricos europeos.
- */
-function parseBdeCsv(csv: string): BdeObservation[] {
-  const out: BdeObservation[] = [];
+function parseEcbCsv(csv: string): Observation[] {
   const lines = csv.split(/\r?\n/);
-  for (const line of lines) {
+  if (lines.length < 2) return [];
+  const header = lines[0].split(",").map((s) => s.trim().replace(/^"|"$/g, ""));
+  const iPeriod = header.indexOf("TIME_PERIOD");
+  const iValue = header.indexOf("OBS_VALUE");
+  if (iPeriod < 0 || iValue < 0) return [];
+
+  const out: Observation[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i];
     if (!line.trim()) continue;
-    const parts = line.split(/[,;\t]/).map((s) => s.trim().replace(/^"|"$/g, ""));
-    if (parts.length < 2) continue;
-    const dateStr = parts[0];
-    const valStr = parts[parts.length - 1];
-    const date = parseSpanishDate(dateStr);
-    const val = parseSpanishNumber(valStr);
-    if (date && Number.isFinite(val)) out.push({ date, value: val });
+    const parts = parseCsvLine(line);
+    const period = parts[iPeriod];
+    const value = parseFloat(parts[iValue]);
+    if (!period || !Number.isFinite(value)) continue;
+    const date = normalizePeriod(period);
+    if (date) out.push({ date, value });
   }
   return out;
 }
 
-function parseSpanishDate(s: string): string | null {
-  // DD/MM/AAAA
-  let m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-  if (m) {
-    const dd = m[1].padStart(2, "0");
-    const mm = m[2].padStart(2, "0");
-    return `${m[3]}-${mm}-${dd}`;
+function parseCsvLine(line: string): string[] {
+  const out: string[] = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') { inQuotes = !inQuotes; continue; }
+    if (c === "," && !inQuotes) { out.push(cur); cur = ""; continue; }
+    cur += c;
   }
-  // AAAA-MM o AAAA/MM o AAAA MM
-  m = s.match(/^(\d{4})[\s\-\/](\d{1,2})$/);
-  if (m) return `${m[1]}-${m[2].padStart(2, "0")}-01`;
-  // AAAA MMM (Ene, Feb...)
-  m = s.match(/^(\d{4})\s+([A-Za-z]{3})$/);
-  if (m) {
-    const months: Record<string, string> = {
-      ene: "01", feb: "02", mar: "03", abr: "04", may: "05", jun: "06",
-      jul: "07", ago: "08", sep: "09", oct: "10", nov: "11", dic: "12",
-      jan: "01", apr: "04", aug: "08", dec: "12",
-    };
-    const mm = months[m[2].toLowerCase()];
-    if (mm) return `${m[1]}-${mm}-01`;
-  }
-  return null;
+  out.push(cur);
+  return out.map((s) => s.trim());
 }
 
-function parseSpanishNumber(s: string): number {
-  return parseFloat(s.replace(/\./g, "").replace(",", "."));
+function normalizePeriod(p: string): string | null {
+  // Formatos: "2024-01", "2024-01-15", "2024"
+  let m = p.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return p;
+  m = p.match(/^(\d{4})-(\d{2})$/);
+  if (m) return `${m[1]}-${m[2]}-01`;
+  m = p.match(/^(\d{4})$/);
+  if (m) return `${m[1]}-12-31`;
+  return null;
 }
