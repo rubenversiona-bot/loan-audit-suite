@@ -702,7 +702,14 @@ function DocumentsTab({ loanId }: { loanId: string }) {
   const [uploading, setUploading] = useState(false);
   const [docType, setDocType] = useState<LoanDocType>("contrato");
   const [extractingId, setExtractingId] = useState<string | null>(null);
+  const [viewer, setViewer] = useState<{ name: string; url: string } | null>(null);
   const extractFn = useServerFn(extractFromDocument);
+
+  useEffect(() => {
+    return () => {
+      if (viewer?.url) URL.revokeObjectURL(viewer.url);
+    };
+  }, [viewer?.url]);
 
   async function refresh() {
     setLoading(true);
