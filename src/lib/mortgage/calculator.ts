@@ -7,6 +7,11 @@
 export type AmortSystem = "frances" | "aleman";
 export type RateType = "fijo" | "variable" | "mixto";
 
+export interface IndexValuePoint {
+  date: Date;
+  value: number; // %
+}
+
 export interface LoanInput {
   initialCapital: number;
   termMonths: number;
@@ -15,14 +20,19 @@ export interface LoanInput {
   rateType: RateType;
   initialTin: number; // anual % (ej. 3.5)
   paymentFrequencyMonths?: number; // por defecto 1
-  /** Periodo fijo (en meses) si es mixto */
   fixedPeriodMonths?: number;
-  /** Cláusula suelo */
   floorRate?: number | null;
-  /** Cláusula techo */
   ceilingRate?: number | null;
-  /** Función opcional: dada una fecha de revisión, devuelve el TIN aplicado (para variables) */
+  /** Función personalizada (si se proporciona, tiene prioridad) */
   rateAt?: (date: Date) => number;
+  /** Diferencial sobre el índice (%). Default 0. */
+  spread?: number;
+  /** Periodicidad de revisión en meses (default 12). */
+  reviewPeriodMonths?: number;
+  /** Meses de desfase para consultar el índice (default 2). */
+  lookbackMonths?: number;
+  /** Histórico de valores del índice de referencia (orden indiferente). */
+  indexValues?: IndexValuePoint[];
 }
 
 export interface AmortRow {
@@ -33,6 +43,9 @@ export interface AmortRow {
   interest: number;
   principal: number;
   balance: number;
+  isRevision: boolean;
+  /** Valor del índice consultado en la revisión (si aplica). */
+  indexValue?: number | null;
 }
 
 export function addMonths(d: Date, m: number): Date {
@@ -41,33 +54,92 @@ export function addMonths(d: Date, m: number): Date {
   return x;
 }
 
-/** Cuota francesa constante */
 export function frenchPayment(principal: number, monthlyRate: number, n: number): number {
   if (monthlyRate === 0) return principal / n;
   return (principal * monthlyRate) / (1 - Math.pow(1 + monthlyRate, -n));
 }
 
+/**
+ * Devuelve el último valor del índice publicado en o antes de `lookupDate`.
+ * Fallback: si no hay valor previo, congela el primer valor disponible.
+ */
+function lookupIndex(values: IndexValuePoint[] | undefined, lookupDate: Date): number | null {
+  if (!values || values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a.date.getTime() - b.date.getTime());
+  let pick: IndexValuePoint | null = null;
+  for (const v of sorted) {
+    if (v.date.getTime() <= lookupDate.getTime()) pick = v;
+    else break;
+  }
+  // Fallback: si la fecha buscada es anterior a todo el histórico, usar el primero
+  return (pick ?? sorted[0]).value;
+}
+
+export function buildRateAt(loan: LoanInput): {
+  resolve: (date: Date) => { rate: number; indexValue: number | null };
+} {
+  const lookback = loan.lookbackMonths ?? 2;
+  const spread = loan.spread ?? 0;
+  return {
+    resolve: (date: Date) => {
+      if (loan.rateAt) return { rate: loan.rateAt(date), indexValue: null };
+      const lookupDate = addMonths(date, -lookback);
+      const idx = lookupIndex(loan.indexValues, lookupDate);
+      if (idx == null) return { rate: loan.initialTin, indexValue: null };
+      return { rate: idx + spread, indexValue: idx };
+    },
+  };
+}
+
 export function generateSchedule(loan: LoanInput): AmortRow[] {
   const freq = loan.paymentFrequencyMonths ?? 1;
   const totalPeriods = Math.round(loan.termMonths / freq);
+  const reviewPeriod = Math.max(1, Math.round((loan.reviewPeriodMonths ?? 12) / freq));
+  const fixedPeriods =
+    loan.rateType === "mixto" && loan.fixedPeriodMonths
+      ? Math.round(loan.fixedPeriodMonths / freq)
+      : 0;
   const rows: AmortRow[] = [];
   let balance = loan.initialCapital;
+  let currentRate = loan.initialTin;
+  let currentPayment: number | null = null;
+
+  const rateResolver = buildRateAt(loan);
 
   for (let i = 1; i <= totalPeriods; i++) {
     const date = addMonths(loan.signedDate, i * freq);
 
-    // Determinar tipo nominal anual del periodo
-    let tinAnnual = loan.initialTin;
-    if (loan.rateType === "variable" && loan.rateAt) {
-      tinAnnual = loan.rateAt(date);
-    } else if (loan.rateType === "mixto") {
-      const monthsElapsed = i * freq;
-      if (monthsElapsed > (loan.fixedPeriodMonths ?? 0) && loan.rateAt) {
-        tinAnnual = loan.rateAt(date);
+    let isRevision = i === 1;
+    let indexValue: number | null = null;
+
+    if (loan.rateType === "fijo") {
+      currentRate = loan.initialTin;
+    } else if (loan.rateType === "variable") {
+      // Revisión en el primer periodo y cada `reviewPeriod`
+      if (i === 1 || (i - 1) % reviewPeriod === 0) {
+        const r = rateResolver.resolve(date);
+        currentRate = r.rate;
+        indexValue = r.indexValue;
+        isRevision = true;
+        currentPayment = null; // forzar recálculo de cuota
+      }
+    } else {
+      // mixto
+      if (i <= fixedPeriods) {
+        currentRate = loan.initialTin;
+      } else {
+        const offset = i - fixedPeriods;
+        if (offset === 1 || (offset - 1) % reviewPeriod === 0) {
+          const r = rateResolver.resolve(date);
+          currentRate = r.rate;
+          indexValue = r.indexValue;
+          isRevision = true;
+          currentPayment = null;
+        }
       }
     }
 
-    // Aplicar suelo/techo
+    let tinAnnual = currentRate;
     if (loan.floorRate != null && tinAnnual < loan.floorRate) tinAnnual = loan.floorRate;
     if (loan.ceilingRate != null && tinAnnual > loan.ceilingRate) tinAnnual = loan.ceilingRate;
 
@@ -79,7 +151,11 @@ export function generateSchedule(loan: LoanInput): AmortRow[] {
 
     if (loan.amortSystem === "frances") {
       const remaining = totalPeriods - i + 1;
-      payment = frenchPayment(balance, monthlyRate, remaining);
+      // Recalcular cuota tras una revisión o al inicio
+      if (currentPayment == null || isRevision) {
+        currentPayment = frenchPayment(balance, monthlyRate, remaining);
+      }
+      payment = currentPayment;
       interest = balance * monthlyRate;
       principal = payment - interest;
     } else {
@@ -98,6 +174,8 @@ export function generateSchedule(loan: LoanInput): AmortRow[] {
       interest: round(interest),
       principal: round(principal),
       balance: round(balance),
+      isRevision,
+      indexValue: indexValue == null ? null : round(indexValue),
     });
   }
   return rows;
@@ -114,7 +192,6 @@ export function totalPaid(rows: AmortRow[]): number {
   return round(rows.reduce((s, r) => s + r.payment, 0));
 }
 
-/** Compara dos cuadros y devuelve la diferencia total de intereses (positivo = paga de más en B vs A) */
 export function compareInterest(a: AmortRow[], b: AmortRow[]): number {
   return round(totalInterest(b) - totalInterest(a));
 }

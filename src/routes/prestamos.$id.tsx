@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate, useParams } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -12,14 +12,22 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { eur, fmtDate, pct } from "@/lib/format";
-import { generateSchedule, totalInterest, type LoanInput } from "@/lib/mortgage/calculator";
+import { generateSchedule, totalInterest, type LoanInput, type IndexValuePoint } from "@/lib/mortgage/calculator";
 import { generateExpertReport } from "@/server/report.functions";
-import { Loader2, FileDown, AlertTriangle, Trash2 } from "lucide-react";
+import { extractFromDocument } from "@/server/extract.functions";
+import { Loader2, FileDown, AlertTriangle, Trash2, Upload, Sparkles, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { LoanForm, loanRowToFormState, formStateToDbPayload, type LoanFormState } from "@/components/loan-form";
 import { deleteLoanCascade } from "@/lib/loans";
+import {
+  LOAN_DOC_TYPES, type LoanDocType,
+  uploadLoanDocument, deleteLoanDocument, getDocumentSignedUrl,
+} from "@/lib/loan-documents";
+import { PdfViewer } from "@/components/pdf-viewer";
+import { cn } from "@/lib/utils";
 import {
   ResponsiveContainer,
   BarChart,
@@ -73,8 +81,39 @@ function Detail() {
     },
   });
 
+  const indexId = (loan as { index_id?: string | null } | null | undefined)?.index_id ?? null;
+  const { data: indexValues = [] } = useQuery({
+    queryKey: ["index-values", indexId],
+    enabled: !!indexId,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("index_values")
+        .select("value_date, value")
+        .eq("index_id", indexId!)
+        .order("value_date");
+      return data ?? [];
+    },
+  });
+
+  const { data: bankRows = [] } = useQuery({
+    queryKey: ["bank-amort", id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("bank_amortization_rows")
+        .select("period, payment, interest, principal, balance, rate")
+        .eq("loan_id", id)
+        .order("period");
+      return data ?? [];
+    },
+  });
+
   if (!loan) return <Loader2 className="h-6 w-6 animate-spin" />;
   const loanData = loan;
+
+  const indexHistory: IndexValuePoint[] = indexValues.map((v) => ({
+    date: new Date(v.value_date),
+    value: Number(v.value),
+  }));
 
   const schedule = generateSchedule({
     initialCapital: Number(loan.initial_capital),
@@ -85,7 +124,16 @@ function Detail() {
     initialTin: Number(loan.initial_tin ?? 0),
     floorRate: loan.floor_rate ? Number(loan.floor_rate) : null,
     ceilingRate: loan.ceiling_rate ? Number(loan.ceiling_rate) : null,
+    spread: loan.spread != null ? Number(loan.spread) : 0,
+    reviewPeriodMonths: loan.review_period_months ?? 12,
+    fixedPeriodMonths: loan.fixed_period_months ?? 0,
+    lookbackMonths: (loan as { index_lookback_months?: number }).index_lookback_months ?? 2,
+    indexValues: indexHistory,
   } as LoanInput);
+
+  const bankByPeriod = new Map<number, (typeof bankRows)[number]>();
+  for (const r of bankRows) bankByPeriod.set(r.period, r);
+  const hasBank = bankRows.length > 0;
 
   const totalDelta = discs.reduce((s, d) => s + Number(d.delta), 0);
 
@@ -184,6 +232,8 @@ function Detail() {
           <TabsTrigger value="cuadro">Cuadro recalculado</TabsTrigger>
           <TabsTrigger value="eventos">Eventos</TabsTrigger>
           <TabsTrigger value="discrepancias">Discrepancias</TabsTrigger>
+          <TabsTrigger value="contrato">Contrato</TabsTrigger>
+          <TabsTrigger value="documentos">Documentos</TabsTrigger>
         </TabsList>
 
         <TabsContent value="datos">
@@ -218,7 +268,19 @@ function Detail() {
 
         <TabsContent value="cuadro">
           <Card>
-            <CardHeader><CardTitle>Cuadro de amortización recalculado ({schedule.length} cuotas)</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle>Cuadro de amortización recalculado ({schedule.length} cuotas)</CardTitle>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground mt-2">
+                <span className="inline-block w-3 h-3 rounded-sm bg-muted border-l-2 border-l-primary/60" />
+                Periodos de revisión del tipo
+                {hasBank && (
+                  <>
+                    <span className="ml-4">·</span>
+                    <span>Δ vs cuadro del banco</span>
+                  </>
+                )}
+              </div>
+            </CardHeader>
             <CardContent className="overflow-auto max-h-[600px]">
               <Table>
                 <TableHeader>
@@ -230,20 +292,65 @@ function Detail() {
                     <TableHead className="text-right">Interés</TableHead>
                     <TableHead className="text-right">Capital</TableHead>
                     <TableHead className="text-right">Pendiente</TableHead>
+                    {hasBank && <TableHead className="text-right">Banco</TableHead>}
+                    {hasBank && <TableHead className="text-right">Δ</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {schedule.map((r) => (
-                    <TableRow key={r.period}>
-                      <TableCell>{r.period}</TableCell>
-                      <TableCell>{fmtDate(r.date)}</TableCell>
-                      <TableCell className="text-right">{pct(r.rateAnnual)}</TableCell>
-                      <TableCell className="text-right">{eur.format(r.payment)}</TableCell>
-                      <TableCell className="text-right">{eur.format(r.interest)}</TableCell>
-                      <TableCell className="text-right">{eur.format(r.principal)}</TableCell>
-                      <TableCell className="text-right">{eur.format(r.balance)}</TableCell>
-                    </TableRow>
-                  ))}
+                  {schedule.map((r) => {
+                    const bank = bankByPeriod.get(r.period);
+                    const delta =
+                      bank && bank.payment != null ? r.payment - Number(bank.payment) : null;
+                    return (
+                      <TableRow
+                        key={r.period}
+                        className={cn(
+                          r.isRevision &&
+                            "bg-muted/60 hover:bg-muted border-l-2 border-l-primary/60 font-medium",
+                        )}
+                      >
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <span>{r.period}</span>
+                            {r.isRevision && (
+                              <Badge variant="secondary" className="text-[10px] py-0 px-1.5">
+                                Revisión
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>{fmtDate(r.date)}</TableCell>
+                        <TableCell className="text-right">
+                          {pct(r.rateAnnual)}
+                          {r.indexValue != null && (
+                            <span className="block text-[10px] text-muted-foreground">
+                              índice {pct(r.indexValue)}
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">{eur.format(r.payment)}</TableCell>
+                        <TableCell className="text-right">{eur.format(r.interest)}</TableCell>
+                        <TableCell className="text-right">{eur.format(r.principal)}</TableCell>
+                        <TableCell className="text-right">{eur.format(r.balance)}</TableCell>
+                        {hasBank && (
+                          <TableCell className="text-right">
+                            {bank?.payment != null ? eur.format(Number(bank.payment)) : "—"}
+                          </TableCell>
+                        )}
+                        {hasBank && (
+                          <TableCell
+                            className={cn(
+                              "text-right",
+                              delta != null && Math.abs(delta) > 1 && delta > 0 && "text-destructive",
+                              delta != null && Math.abs(delta) > 1 && delta < 0 && "text-emerald-600",
+                            )}
+                          >
+                            {delta != null ? eur.format(delta) : "—"}
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </CardContent>
@@ -271,6 +378,14 @@ function Detail() {
 
         <TabsContent value="discrepancias">
           <DiscsTab loanId={id} discs={discs} />
+        </TabsContent>
+
+        <TabsContent value="contrato">
+          <ContractTab loanId={id} />
+        </TabsContent>
+
+        <TabsContent value="documentos">
+          <DocumentsTab loanId={id} />
         </TabsContent>
       </Tabs>
     </div>
@@ -467,4 +582,275 @@ function EditLoanTab({ id, loan }: { id: string; loan: Record<string, unknown> }
     location.reload();
   }
   return <LoanForm mode="edit" initial={initial} onSubmit={handleSave} />;
+}
+
+interface DocRow {
+  id: string;
+  loan_id: string | null;
+  doc_type: string | null;
+  file_name: string | null;
+  file_path: string | null;
+  bucket: string | null;
+  size_bytes: number | null;
+  created_at: string;
+}
+
+function ContractTab({ loanId }: { loanId: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [doc, setDoc] = useState<DocRow | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      const { data } = await supabase
+        .from("documents")
+        .select("id, loan_id, doc_type, file_name, file_path, bucket, size_bytes, created_at")
+        .eq("loan_id", loanId)
+        .in("doc_type", ["contrato", "escritura"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (cancelled) return;
+      setDoc(data ?? null);
+      if (data?.bucket && data.file_path) {
+        try {
+          const u = await getDocumentSignedUrl(data.bucket, data.file_path, 3600);
+          if (!cancelled) setUrl(u);
+        } catch {
+          /* noop */
+        }
+      }
+      setLoading(false);
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [loanId]);
+
+  if (loading) {
+    return <Loader2 className="h-5 w-5 animate-spin" />;
+  }
+  if (!doc || !url) {
+    return (
+      <Card>
+        <CardContent className="py-6 text-sm text-muted-foreground">
+          No hay un contrato o escritura asociado todavía. Súbelo desde la pestaña{" "}
+          <strong>Documentos</strong>.
+        </CardContent>
+      </Card>
+    );
+  }
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <FileText className="h-4 w-4" /> {doc.file_name ?? "Contrato"}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <PdfViewer fileUrl={url} />
+      </CardContent>
+    </Card>
+  );
+}
+
+function DocumentsTab({ loanId }: { loanId: string }) {
+  const [docs, setDocs] = useState<DocRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [docType, setDocType] = useState<LoanDocType>("contrato");
+  const [extractingId, setExtractingId] = useState<string | null>(null);
+  const extractFn = useServerFn(extractFromDocument);
+
+  async function refresh() {
+    setLoading(true);
+    const { data } = await supabase
+      .from("documents")
+      .select("id, loan_id, doc_type, file_name, file_path, bucket, size_bytes, created_at")
+      .eq("loan_id", loanId)
+      .order("created_at", { ascending: false });
+    setDocs(data ?? []);
+    setLoading(false);
+  }
+  useEffect(() => {
+    refresh();
+  }, [loanId]);
+
+  async function onUpload(file: File) {
+    if (file.size > 25 * 1024 * 1024) {
+      toast.error("El archivo supera 25 MB.");
+      return;
+    }
+    setUploading(true);
+    try {
+      await uploadLoanDocument(loanId, file, docType);
+      toast.success("Documento subido");
+      refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Error al subir");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function onDelete(d: DocRow) {
+    try {
+      await deleteLoanDocument(d);
+      toast.success("Documento eliminado");
+      refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Error");
+    }
+  }
+
+  async function onExtract(d: DocRow) {
+    setExtractingId(d.id);
+    try {
+      const r = await extractFn({ data: { documentId: d.id } });
+      if (!r.ok) {
+        toast.error(r.error ?? "Error en la extracción");
+        return;
+      }
+      if (r.kind === "cuadro_banco") {
+        toast.success(`Cuadro extraído: ${r.count} filas. Disponible en "Cuadro recalculado".`);
+      } else if (r.kind === "recibo") {
+        toast.success(`${r.count} movimientos añadidos a Eventos.`);
+      } else {
+        toast.success("Datos extraídos. Revisa la pestaña Datos para aplicar cambios.");
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Error");
+    } finally {
+      setExtractingId(null);
+    }
+  }
+
+  async function onView(d: DocRow) {
+    if (!d.bucket || !d.file_path) return;
+    try {
+      const u = await getDocumentSignedUrl(d.bucket, d.file_path);
+      window.open(u, "_blank");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Error");
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Documentos del préstamo</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap items-center gap-2 border rounded-md p-3 bg-muted/30">
+          <span className="text-sm text-muted-foreground">Tipo:</span>
+          <Select value={docType} onValueChange={(v) => setDocType(v as LoanDocType)}>
+            <SelectTrigger className="w-64"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {LOAN_DOC_TYPES.map((t) => (
+                <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <label className="ml-2">
+            <input
+              type="file"
+              accept="application/pdf"
+              className="hidden"
+              disabled={uploading}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.currentTarget.value = "";
+                if (f) onUpload(f);
+              }}
+            />
+            <span>
+              <Button asChild size="sm" disabled={uploading}>
+                <span className="cursor-pointer">
+                  {uploading ? (
+                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  ) : (
+                    <Upload className="h-4 w-4 mr-1" />
+                  )}
+                  Subir PDF
+                </span>
+              </Button>
+            </span>
+          </label>
+          <span className="text-xs text-muted-foreground ml-auto">Máx. 25 MB</span>
+        </div>
+
+        {loading ? (
+          <Loader2 className="h-5 w-5 animate-spin" />
+        ) : docs.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Sin documentos.</p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Archivo</TableHead>
+                <TableHead>Tipo</TableHead>
+                <TableHead>Subido</TableHead>
+                <TableHead className="text-right">Tamaño</TableHead>
+                <TableHead className="text-right">Acciones</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {docs.map((d) => (
+                <TableRow key={d.id}>
+                  <TableCell className="max-w-[280px] truncate">{d.file_name ?? "—"}</TableCell>
+                  <TableCell>
+                    <Badge variant="outline">{d.doc_type ?? "otro"}</Badge>
+                  </TableCell>
+                  <TableCell>{fmtDate(d.created_at)}</TableCell>
+                  <TableCell className="text-right">
+                    {d.size_bytes ? `${(d.size_bytes / 1024).toFixed(0)} KB` : "—"}
+                  </TableCell>
+                  <TableCell className="text-right space-x-1">
+                    <Button size="sm" variant="ghost" onClick={() => onView(d)}>Ver</Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={extractingId === d.id}
+                      onClick={() => onExtract(d)}
+                    >
+                      {extractingId === d.id ? (
+                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-3 w-3 mr-1" />
+                      )}
+                      Extraer
+                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button size="sm" variant="destructive">
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>¿Eliminar documento?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Se borrará el archivo y los datos extraídos asociados.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => onDelete(d)}>
+                            Eliminar
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  );
 }

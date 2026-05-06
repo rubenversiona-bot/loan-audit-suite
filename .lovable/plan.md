@@ -1,79 +1,62 @@
+## Plan (actualizado)
 
-## Objetivo
+Mismas mejoras del plan anterior + **destacar visualmente las filas de revisión** en el cuadro de amortización.
 
-1. Permitir **ver y editar** los datos de un préstamo ya creado.
-2. Permitir **borrar** un préstamo (con todos sus registros relacionados).
-3. Resolver el **error de tamaño** al subir el PDF en `prestamos/nuevo` para admitir al menos 25 MB.
+### 1. Cuadro de amortización con revisiones reales
+- Migración: `loans.index_lookback_months int not null default 2`.
+- `src/lib/mortgage/calculator.ts`:
+  - Extender `LoanInput` con `indexValues`, `spread`, `reviewPeriodMonths`, `lookbackMonths`.
+  - `buildRateAt(date)`: busca último valor del índice con `value_date ≤ date − lookbackMonths`, devuelve `value + spread`. Fallback: congelar último valor conocido.
+  - `generateSchedule`: aplicar nuevo TIN solo en periodos de revisión y **recalcular cuota francesa** con saldo restante.
+  - Añadir flag `isRevision: boolean` en cada `AmortRow` (true en periodo 1, fin del tramo fijo y cada revisión posterior).
 
----
+### 2. Campo "desfase del índice" (1 / 2 meses)
+- `loan-form.tsx`: `<Select>` visible si `rate_type !== "fijo"`.
+- `extract.functions.ts`: añadir `index_lookback_months: 1|2` (default 2) al schema y al prompt.
+- `prestamos.nuevo.tsx`: incluir en el insert.
 
-## 1. Editar préstamo
+### 3. Visor PDF con paginación + búsqueda
+- `bun add react-pdf`.
+- `src/components/pdf-viewer.tsx`: controles ←/→, input de página, input de búsqueda con `customTextRenderer` que envuelve coincidencias en `<mark>`. Worker cargado solo en cliente.
+- Tab nuevo **"Contrato"** en `prestamos.$id.tsx` con signed URL del documento `contrato`.
 
-Actualmente `src/routes/prestamos.$id.tsx` solo muestra una cabecera de solo lectura. Reutilizamos la estructura del formulario de `prestamos.nuevo.tsx`.
+### 4. Documentos adicionales con extracción IA
+- `src/lib/loan-documents.ts`: `uploadLoanDocument`, `deleteLoanDocument`.
+- Tipos: `contrato`, `cuadro_banco`, `recibo`, `escritura`, `otro`.
+- Tab **"Documentos"** con listado, subida (selector `doc_type`), borrado con confirmación y botón "Extraer datos".
+- Server fn `extractFromDocument({ documentId })`:
+  - `cuadro_banco` → filas a tabla nueva `bank_amortization_rows` para comparar con el cuadro recalculado.
+  - `recibo` → inserta movimientos en `loan_events`.
+  - `contrato`/`escritura`/`otro` → propone diff de campos del préstamo.
+- Migración: tabla `bank_amortization_rows` con RLS owner.
 
-**Cambios:**
-- Extraer el formulario de `prestamos.nuevo.tsx` a un componente reusable `src/components/loan-form.tsx` con props:
-  - `initial: FormState`
-  - `mode: "create" | "edit"`
-  - `onSubmit(values)` — el componente padre decide si hace `insert` o `update`.
-  - Mantiene la sección opcional de extracción IA solo en modo `create`.
-- En `prestamos.$id.tsx` añadir una pestaña nueva **"Datos"** (la primera) con `<LoanForm mode="edit" initial={...} onSubmit={...} />` que hace `supabase.from("loans").update(...).eq("id", id)`.
-- `prestamos.nuevo.tsx` se simplifica para usar el mismo componente.
+### 5. NUEVO — Resaltar filas de revisión en el cuadro
 
-## 2. Borrar préstamo
+`src/routes/prestamos.$id.tsx`, en el render del cuadro recalculado:
 
-- Añadir botón **"Eliminar préstamo"** (variant destructive) en la cabecera de `prestamos.$id.tsx`, protegido con `AlertDialog` de confirmación.
-- Acción: borrar en orden:
-  1. `discrepancies` where `loan_id = id`
-  2. `loan_events` where `loan_id = id`
-  3. `statement_movements` (vía `bank_statements`) y `bank_statements` where `loan_id = id`
-  4. `documents` where `loan_id = id` (+ borrar archivos del bucket `loan-documents` con `supabase.storage.from(...).remove([...])`)
-  5. `loans` where `id = id`
-- Tras éxito → `toast` y `navigate({ to: "/prestamos" })`.
-- En la lista `prestamos.index.tsx`: añadir botón de borrado por fila (también con confirmación) reutilizando la misma función helper `deleteLoanCascade(id)` colocada en `src/lib/loans.ts`.
+- Mantener estilo coherente con shadcn (sin colores fuertes, solo tono de superficie).
+- Aplicar a `<TableRow>` cuando `row.isRevision`:
+  ```tsx
+  className={cn(row.isRevision && "bg-muted/60 hover:bg-muted border-l-2 border-l-primary/60 font-medium")}
+  ```
+  - `bg-muted/60`: fondo suave que respeta el tema (claro y oscuro).
+  - Borde izquierdo `border-l-primary/60` como acento sutil.
+  - Texto en `font-medium` para distinguir sin gritar.
+- Añadir `<Badge variant="secondary" className="ml-2">Revisión</Badge>` al lado del periodo en esas filas.
+- Leyenda discreta encima de la tabla: cuadrito `bg-muted/60` + "Periodos de revisión del tipo".
+- Si existe comparativa con `bank_amortization_rows`, las celdas Δ con desviación > 0,5% se marcan en `text-destructive`/`text-emerald-600` (independiente del resaltado de revisión).
 
-## 3. Subida de PDF hasta 25 MB
-
-**Causa raíz:** hoy el PDF se envía como JSON base64 dentro del cuerpo de un `createServerFn`. El runtime del Worker / proxy limita el body a ~1 MB en JSON serializado, por eso falla con archivos grandes. Base64 además infla el tamaño un ~33%.
-
-**Solución:** subir primero a Supabase Storage desde el navegador (sin pasar por el Worker), y enviar al servidor solo la ruta del archivo. El servidor lo descarga con `supabaseAdmin` y lo procesa.
-
-**Cambios:**
-- `src/routes/prestamos.nuevo.tsx`:
-  - Validar `file.size <= 25 * 1024 * 1024`; mostrar toast claro si se excede.
-  - Subir el PDF al bucket `loan-documents` en `tmp-extract/{user_id}/{uuid}.pdf` con `supabase.storage.from("loan-documents").upload(path, file)`.
-  - Llamar a `extractLoanFromPdf({ data: { storagePath } })` en lugar de mandar base64.
-- `src/server/extract.functions.ts`:
-  - Cambiar el schema a `{ storagePath: string }`.
-  - Usar `supabaseAdmin.storage.from("loan-documents").download(storagePath)` para obtener el `Blob`, convertirlo a base64 dentro del handler y pasarlo al gateway IA igual que ahora.
-  - Borrar el archivo temporal tras procesarlo (`.remove([path])`).
-- `supabase/config.toml`: nada que tocar (el límite por request en Storage es de varios GB; suficiente para 25 MB).
-- Verificar que las RLS del bucket `loan-documents` permiten `INSERT/SELECT/DELETE` al `owner_id == auth.uid()` para la ruta `tmp-extract/{user_id}/...`. Si no existen, añadir migración con políticas en `storage.objects`.
-
-## Detalles técnicos
+### Archivos
 
 ```text
-src/
-  components/loan-form.tsx       (nuevo)  — formulario reusable create/edit
-  lib/loans.ts                   (nuevo)  — deleteLoanCascade(id)
-  routes/
-    prestamos.$id.tsx            (edit)   — pestaña "Datos" + botón eliminar
-    prestamos.index.tsx          (edit)   — botón eliminar por fila
-    prestamos.nuevo.tsx          (edit)   — usa LoanForm + upload a Storage
-  server/extract.functions.ts    (edit)   — recibe storagePath en vez de base64
+src/lib/mortgage/calculator.ts        edit  — isRevision + buildRateAt
+src/lib/loan-documents.ts             new
+src/components/loan-form.tsx          edit  — campo lookback
+src/components/pdf-viewer.tsx         new
+src/routes/prestamos.$id.tsx          edit  — tabs + filas resaltadas + leyenda
+src/routes/prestamos.nuevo.tsx        edit
+src/server/extract.functions.ts       edit  — lookback + extractFromDocument
+supabase/migrations/<ts>.sql          new   — index_lookback_months + bank_amortization_rows
 ```
 
-Migración SQL (solo si las políticas del bucket no existen ya):
-
-```sql
-create policy "loan_docs_owner_rw"
-on storage.objects for all to authenticated
-using (bucket_id = 'loan-documents' and owner = auth.uid())
-with check (bucket_id = 'loan-documents' and owner = auth.uid());
-```
-
-## Resultado para el usuario
-
-- Desde la ficha de un préstamo se podrán editar todos los campos y borrarlo por completo.
-- Desde el listado se podrá borrar un préstamo con confirmación.
-- La subida de contratos PDF admitirá hasta 25 MB sin error de tamaño.
+Una vez aprobado, lo implemento todo de una vez.
