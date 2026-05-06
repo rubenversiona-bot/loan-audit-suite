@@ -81,8 +81,39 @@ function Detail() {
     },
   });
 
+  const indexId = (loan as { index_id?: string | null } | null | undefined)?.index_id ?? null;
+  const { data: indexValues = [] } = useQuery({
+    queryKey: ["index-values", indexId],
+    enabled: !!indexId,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("index_values")
+        .select("value_date, value")
+        .eq("index_id", indexId!)
+        .order("value_date");
+      return data ?? [];
+    },
+  });
+
+  const { data: bankRows = [] } = useQuery({
+    queryKey: ["bank-amort", id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("bank_amortization_rows")
+        .select("period, payment, interest, principal, balance, rate")
+        .eq("loan_id", id)
+        .order("period");
+      return data ?? [];
+    },
+  });
+
   if (!loan) return <Loader2 className="h-6 w-6 animate-spin" />;
   const loanData = loan;
+
+  const indexHistory: IndexValuePoint[] = indexValues.map((v) => ({
+    date: new Date(v.value_date),
+    value: Number(v.value),
+  }));
 
   const schedule = generateSchedule({
     initialCapital: Number(loan.initial_capital),
@@ -93,7 +124,16 @@ function Detail() {
     initialTin: Number(loan.initial_tin ?? 0),
     floorRate: loan.floor_rate ? Number(loan.floor_rate) : null,
     ceilingRate: loan.ceiling_rate ? Number(loan.ceiling_rate) : null,
+    spread: loan.spread != null ? Number(loan.spread) : 0,
+    reviewPeriodMonths: loan.review_period_months ?? 12,
+    fixedPeriodMonths: loan.fixed_period_months ?? 0,
+    lookbackMonths: (loan as { index_lookback_months?: number }).index_lookback_months ?? 2,
+    indexValues: indexHistory,
   } as LoanInput);
+
+  const bankByPeriod = new Map<number, (typeof bankRows)[number]>();
+  for (const r of bankRows) bankByPeriod.set(r.period, r);
+  const hasBank = bankRows.length > 0;
 
   const totalDelta = discs.reduce((s, d) => s + Number(d.delta), 0);
 
