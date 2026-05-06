@@ -325,6 +325,8 @@ export function loanRowToFormState(l: Record<string, unknown>): LoanFormState {
     debtor_name: v("debtor_name"),
     bank_name: v("bank_name"),
     loan_number: v("loan_number"),
+    expediente_ref: v("expediente_ref"),
+    expediente_date: v("expediente_date"),
     signed_date: v("signed_date"),
     initial_capital: v("initial_capital"),
     term_months: v("term_months"),
