@@ -26,9 +26,8 @@ const LoanExtractionSchema = {
       fixed_period_months: { type: "integer" },
       index_lookback_months: {
         type: "integer",
-        enum: [1, 2],
         description:
-          "Meses anteriores a la fecha de revisión que se toman para consultar el índice publicado. Buscar cláusulas como 'Euribor publicado el mes natural anterior' (1) o 'dos meses naturales anteriores' (2). Si no se especifica claramente, devolver 2.",
+          "Devolver 1 o 2. Meses anteriores a la fecha de revisión que se toman para consultar el índice publicado. Cláusulas como 'Euribor publicado el mes natural anterior' = 1; 'dos meses naturales anteriores' = 2. Si no se especifica, devolver 2.",
       },
       opening_fee_pct: { type: "number" },
       early_repay_fee_pct: { type: "number" },
