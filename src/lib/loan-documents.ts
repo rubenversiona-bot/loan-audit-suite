@@ -66,3 +66,18 @@ export async function getDocumentSignedUrl(
   if (error || !data) throw error ?? new Error("No se pudo generar URL");
   return data.signedUrl;
 }
+
+/**
+ * Descarga el archivo desde Storage y devuelve una URL `blob:` local.
+ * Evita problemas con bloqueadores de contenido (ERR_BLOCKED_BY_CLIENT)
+ * que filtran dominios de Supabase, ya que el navegador nunca solicita
+ * directamente la URL firmada al abrirla.
+ */
+export async function getDocumentBlobUrl(
+  bucket: string,
+  path: string,
+): Promise<string> {
+  const { data, error } = await supabase.storage.from(bucket).download(path);
+  if (error || !data) throw error ?? new Error("No se pudo descargar el archivo");
+  return URL.createObjectURL(data);
+}

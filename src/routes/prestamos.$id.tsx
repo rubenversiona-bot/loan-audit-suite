@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate, useParams } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useState } from "react";
+import { useEffect, useState, lazy, Suspense } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -24,9 +24,11 @@ import { LoanForm, loanRowToFormState, formStateToDbPayload, type LoanFormState 
 import { deleteLoanCascade } from "@/lib/loans";
 import {
   LOAN_DOC_TYPES, type LoanDocType,
-  uploadLoanDocument, deleteLoanDocument, getDocumentSignedUrl,
+  uploadLoanDocument, deleteLoanDocument, getDocumentSignedUrl, getDocumentBlobUrl,
 } from "@/lib/loan-documents";
-import { PdfViewer } from "@/components/pdf-viewer";
+const PdfViewer = lazy(() =>
+  import("@/components/pdf-viewer").then((m) => ({ default: m.PdfViewer })),
+);
 import { cn } from "@/lib/utils";
 import {
   ResponsiveContainer,
@@ -616,7 +618,7 @@ function ContractTab({ loanId }: { loanId: string }) {
       setDoc(data ?? null);
       if (data?.bucket && data.file_path) {
         try {
-          const u = await getDocumentSignedUrl(data.bucket, data.file_path, 3600);
+          const u = await getDocumentBlobUrl(data.bucket, data.file_path);
           if (!cancelled) setUrl(u);
         } catch {
           /* noop */
@@ -651,7 +653,9 @@ function ContractTab({ loanId }: { loanId: string }) {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <PdfViewer fileUrl={url} />
+        <Suspense fallback={<Loader2 className="h-5 w-5 animate-spin" />}>
+          <PdfViewer fileUrl={url} />
+        </Suspense>
       </CardContent>
     </Card>
   );
@@ -731,8 +735,18 @@ function DocumentsTab({ loanId }: { loanId: string }) {
   async function onView(d: DocRow) {
     if (!d.bucket || !d.file_path) return;
     try {
-      const u = await getDocumentSignedUrl(d.bucket, d.file_path);
-      window.open(u, "_blank");
+      const u = await getDocumentBlobUrl(d.bucket, d.file_path);
+      const w = window.open(u, "_blank");
+      if (!w) {
+        // Si el popup está bloqueado, forzamos descarga vía enlace temporal
+        const a = document.createElement("a");
+        a.href = u;
+        a.target = "_blank";
+        a.rel = "noopener";
+        a.click();
+      }
+      // Liberamos la URL al cabo de un rato (el tab ya la habrá cargado)
+      setTimeout(() => URL.revokeObjectURL(u), 60_000);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Error");
     }
