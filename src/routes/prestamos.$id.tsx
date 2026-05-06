@@ -379,6 +379,14 @@ function Detail() {
         <TabsContent value="discrepancias">
           <DiscsTab loanId={id} discs={discs} />
         </TabsContent>
+
+        <TabsContent value="contrato">
+          <ContractTab loanId={id} />
+        </TabsContent>
+
+        <TabsContent value="documentos">
+          <DocumentsTab loanId={id} />
+        </TabsContent>
       </Tabs>
     </div>
   );
