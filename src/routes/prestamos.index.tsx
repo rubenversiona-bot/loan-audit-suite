@@ -103,6 +103,14 @@ function List() {
                     <div className="text-xs text-muted-foreground mt-1 truncate">
                       {l.bank_name ?? "—"} · Nº {l.loan_number ?? "—"}
                     </div>
+                    {(l as { expediente_ref?: string | null }).expediente_ref && (
+                      <div className="text-xs text-muted-foreground truncate">
+                        Exp. {(l as { expediente_ref: string }).expediente_ref}
+                        {(l as { expediente_date?: string | null }).expediente_date && (
+                          <> · {fmtDate((l as { expediente_date: string }).expediente_date)}</>
+                        )}
+                      </div>
+                    )}
                   </Link>
                   <div className="flex items-center gap-2 shrink-0">
                     <Badge variant={l.status === "borrador" ? "secondary" : "default"}>{l.status}</Badge>
