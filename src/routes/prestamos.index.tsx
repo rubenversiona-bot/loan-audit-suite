@@ -64,7 +64,16 @@ function List() {
 
   return (
     <div className="space-y-4 max-w-6xl">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="relative flex-1 max-w-md">
+          <Search className="h-4 w-4 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por deudor, banco, nº préstamo o expediente…"
+            className="pl-8"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
         <Button asChild>
           <Link to="/prestamos/nuevo">
             <Plus className="h-4 w-4 mr-1" /> Nuevo préstamo
@@ -77,9 +86,15 @@ function List() {
             Sin préstamos. Crea el primero para comenzar el análisis pericial.
           </CardContent>
         </Card>
+      ) : filtered.length === 0 ? (
+        <Card>
+          <CardContent className="text-center py-12 text-muted-foreground">
+            No se han encontrado préstamos para «{search}».
+          </CardContent>
+        </Card>
       ) : (
         <div className="grid md:grid-cols-2 gap-3">
-          {loans.map((l) => (
+          {filtered.map((l) => (
             <Card key={l.id} className="hover:border-primary transition-colors">
               <CardContent className="pt-6">
                 <div className="flex justify-between items-start gap-2">
