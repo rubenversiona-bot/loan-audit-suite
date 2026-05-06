@@ -142,22 +142,111 @@ export const generateExpertReport = createServerFn({ method: "POST" })
     writeLine(`6. CUADRO DE AMORTIZACIÓN RECALCULADO (${schedule.length} cuotas)`, { font: bold, size: 13 });
     sep();
 
-    // Cabecera de tabla en formato tabular monoespaciado simple
-    const header = "  #   Fecha        TIN%      Cuota       Interés     Capital     Pendiente";
-    writeLine(header, { font: bold, size: 9 });
-    const fmt = (n: number, w: number) => n.toFixed(2).padStart(w);
-    const fmtInt = (n: number, w: number) => String(n).padStart(w);
+    // Render tabular con pdf-lib primitives
+    type Align = "left" | "right" | "center";
+    type Col = { label: string; w: number; align: Align };
+    const COLS: Col[] = [
+      { label: "#",         w: 28, align: "right" },
+      { label: "Fecha",     w: 70, align: "left"  },
+      { label: "TIN %",     w: 50, align: "right" },
+      { label: "Cuota",     w: 75, align: "right" },
+      { label: "Interés",   w: 75, align: "right" },
+      { label: "Capital",   w: 75, align: "right" },
+      { label: "Pendiente", w: 90, align: "right" },
+    ];
+    const tableX = margin;
+    const tableW = COLS.reduce((s, c) => s + c.w, 0);
+    const cellPad = 4;
+    const headerH = 18;
+    const rowH = 12;
+    const headerSize = 9;
+    const cellSize = 9;
+
+    const colX = (idx: number) => {
+      let x = tableX;
+      for (let i = 0; i < idx; i++) x += COLS[i].w;
+      return x;
+    };
+
+    const drawCell = (text: string, idx: number, yTop: number, f: typeof font, size: number) => {
+      const col = COLS[idx];
+      const x0 = colX(idx);
+      const textW = f.widthOfTextAtSize(text, size);
+      let tx = x0 + cellPad;
+      if (col.align === "right") tx = x0 + col.w - cellPad - textW;
+      else if (col.align === "center") tx = x0 + (col.w - textW) / 2;
+      const ty = yTop - rowH + 3;
+      page.drawText(text, { x: tx, y: ty, size, font: f, color: rgb(0.1, 0.1, 0.1) });
+    };
+
+    const drawTableHeader = () => {
+      // Banda gris medio
+      page.drawRectangle({
+        x: tableX,
+        y: y - headerH,
+        width: tableW,
+        height: headerH,
+        color: rgb(0.82, 0.82, 0.86),
+      });
+      // Etiquetas
+      COLS.forEach((c, i) => {
+        const x0 = colX(i);
+        const textW = bold.widthOfTextAtSize(c.label, headerSize);
+        let tx = x0 + cellPad;
+        if (c.align === "right") tx = x0 + c.w - cellPad - textW;
+        else if (c.align === "center") tx = x0 + (c.w - textW) / 2;
+        const ty = y - headerH + 5;
+        page.drawText(c.label, { x: tx, y: ty, size: headerSize, font: bold, color: rgb(0.1, 0.1, 0.15) });
+      });
+      // Línea inferior
+      page.drawRectangle({
+        x: tableX,
+        y: y - headerH - 0.5,
+        width: tableW,
+        height: 0.5,
+        color: rgb(0.5, 0.5, 0.55),
+      });
+      y -= headerH + 2;
+    };
+
+    const ensureSpace = () => {
+      if (y - rowH < margin) {
+        page = addPage();
+        y = 800;
+        drawTableHeader();
+      }
+    };
+
+    drawTableHeader();
+
+    const fmt = (n: number) => n.toFixed(2);
     for (const r of schedule) {
+      ensureSpace();
+      // Fondo gris claro en revisiones
+      if (r.isRevision) {
+        page.drawRectangle({
+          x: tableX,
+          y: y - rowH,
+          width: tableW,
+          height: rowH,
+          color: rgb(0.93, 0.93, 0.96),
+        });
+      }
       const date = r.date.toISOString().slice(0, 10);
-      const line =
-        `${fmtInt(r.period, 4)}  ${date}  ` +
-        `${fmt(r.rateAnnual, 6)}  ${fmt(r.payment, 10)}  ` +
-        `${fmt(r.interest, 10)}  ${fmt(r.principal, 10)}  ${fmt(r.balance, 12)}` +
-        (r.isRevision ? "  *" : "");
-      writeLine(line, { size: 9 });
+      const cells = [
+        String(r.period),
+        date,
+        fmt(r.rateAnnual),
+        fmt(r.payment),
+        fmt(r.interest),
+        fmt(r.principal),
+        fmt(r.balance) + (r.isRevision ? " *" : ""),
+      ];
+      cells.forEach((txt, i) => drawCell(txt, i, y, font, cellSize));
+      y -= rowH;
     }
-    sep();
-    writeLine("(*) Periodos de revisión del tipo.", { size: 8, color: [0.4, 0.4, 0.4] });
+    y -= 6;
+    writeLine("(*) Periodos de revisión del tipo (fila resaltada).", { size: 8, color: [0.4, 0.4, 0.4] });
 
 
     const bytes = await pdf.save();
