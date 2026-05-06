@@ -107,7 +107,7 @@ async function callAi(opts: {
   systemPrompt: string;
   userPrompt: string;
   pdfBase64: string;
-  tool: typeof LoanExtractionSchema;
+  tool: { name: string; description: string; parameters: Record<string, unknown> };
 }) {
   const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
