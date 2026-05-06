@@ -1,4 +1,4 @@
-import { createFileRoute, useParams } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, useParams } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
@@ -8,12 +8,18 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { eur, fmtDate, pct } from "@/lib/format";
 import { generateSchedule, totalInterest, type LoanInput } from "@/lib/mortgage/calculator";
 import { generateExpertReport } from "@/server/report.functions";
-import { Loader2, FileDown, AlertTriangle } from "lucide-react";
+import { Loader2, FileDown, AlertTriangle, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { LoanForm, loanRowToFormState, formStateToDbPayload, type LoanFormState } from "@/components/loan-form";
+import { deleteLoanCascade } from "@/lib/loans";
 import {
   ResponsiveContainer,
   BarChart,
