@@ -1,7 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
-const ExtractLoanSchema = z.object({ pdfBase64: z.string().min(10) });
+const ExtractLoanSchema = z.object({ storagePath: z.string().min(3) });
 
 const LoanExtractionSchema = {
   name: "extract_loan_data",
@@ -32,13 +33,32 @@ const LoanExtractionSchema = {
   },
 };
 
+function bufferToBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
 export const extractLoanFromPdf = createServerFn({ method: "POST" })
   .inputValidator((d) => ExtractLoanSchema.parse(d))
   .handler(async ({ data }) => {
     const apiKey = process.env.LOVABLE_API_KEY;
     if (!apiKey) return { ok: false, error: "LOVABLE_API_KEY no configurada", suggested: null };
 
+    const path = data.storagePath;
+
     try {
+      const dl = await supabaseAdmin.storage.from("loan-documents").download(path);
+      if (dl.error || !dl.data) {
+        return { ok: false, error: `No se pudo descargar el PDF: ${dl.error?.message ?? "vacío"}`, suggested: null };
+      }
+      const buf = await dl.data.arrayBuffer();
+      const b64 = bufferToBase64(buf);
+
       const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
@@ -54,7 +74,7 @@ export const extractLoanFromPdf = createServerFn({ method: "POST" })
               role: "user",
               content: [
                 { type: "text", text: "Extrae los datos del préstamo hipotecario de este documento." },
-                { type: "image_url", image_url: { url: `data:application/pdf;base64,${data.pdfBase64}` } },
+                { type: "image_url", image_url: { url: `data:application/pdf;base64,${b64}` } },
               ],
             },
           ],
@@ -62,6 +82,9 @@ export const extractLoanFromPdf = createServerFn({ method: "POST" })
           tool_choice: { type: "function", function: { name: "extract_loan_data" } },
         }),
       });
+
+      // Limpiar archivo temporal sin bloquear la respuesta
+      void supabaseAdmin.storage.from("loan-documents").remove([path]);
 
       if (!res.ok) {
         const txt = await res.text();
