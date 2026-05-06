@@ -451,3 +451,20 @@ function b64ToBlob(b64: string, type: string): Blob {
   for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
   return new Blob([arr], { type });
 }
+
+function EditLoanTab({ id, loan }: { id: string; loan: Record<string, unknown> }) {
+  const initial = loanRowToFormState(loan);
+  async function handleSave(values: LoanFormState) {
+    const { error } = await supabase
+      .from("loans")
+      .update(formStateToDbPayload(values))
+      .eq("id", id);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success("Préstamo actualizado");
+    location.reload();
+  }
+  return <LoanForm mode="edit" initial={initial} onSubmit={handleSave} />;
+}
