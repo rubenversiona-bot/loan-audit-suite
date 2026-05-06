@@ -16,6 +16,8 @@ export interface LoanFormState {
   debtor_name: string;
   bank_name: string;
   loan_number: string;
+  expediente_ref: string;
+  expediente_date: string;
   signed_date: string;
   initial_capital: string;
   term_months: string;
@@ -35,6 +37,8 @@ export const emptyLoanForm: LoanFormState = {
   debtor_name: "",
   bank_name: "",
   loan_number: "",
+  expediente_ref: "",
+  expediente_date: "",
   signed_date: "",
   initial_capital: "",
   term_months: "",
