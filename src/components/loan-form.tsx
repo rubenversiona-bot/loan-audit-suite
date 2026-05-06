@@ -28,6 +28,7 @@ export interface LoanFormState {
   fixed_period_months: string;
   floor_rate: string;
   ceiling_rate: string;
+  index_lookback_months: string;
 }
 
 export const emptyLoanForm: LoanFormState = {
@@ -46,6 +47,7 @@ export const emptyLoanForm: LoanFormState = {
   fixed_period_months: "",
   floor_rate: "",
   ceiling_rate: "",
+  index_lookback_months: "2",
 };
 
 const MAX_PDF_BYTES = 25 * 1024 * 1024;
@@ -251,6 +253,18 @@ export function LoanForm({ mode, initial, onSubmit, onCancel, submitLabel }: Pro
                 <Field label="Periodo revisión (meses)">
                   <Input type="number" value={form.review_period_months} onChange={(e) => set("review_period_months", e.target.value)} />
                 </Field>
+                <Field label="Desfase del índice" badge={aiBadge("index_lookback_months")}>
+                  <Select
+                    value={form.index_lookback_months || "2"}
+                    onValueChange={(v) => set("index_lookback_months", v)}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">1 mes anterior a la revisión</SelectItem>
+                      <SelectItem value="2">2 meses anteriores a la revisión</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
               </>
             )}
             {form.rate_type === "mixto" && (
@@ -313,6 +327,7 @@ export function loanRowToFormState(l: Record<string, unknown>): LoanFormState {
     fixed_period_months: v("fixed_period_months"),
     floor_rate: v("floor_rate"),
     ceiling_rate: v("ceiling_rate"),
+    index_lookback_months: v("index_lookback_months") || "2",
   };
 }
 
@@ -333,5 +348,6 @@ export function formStateToDbPayload(f: LoanFormState) {
     fixed_period_months: f.fixed_period_months ? Number(f.fixed_period_months) : null,
     floor_rate: f.floor_rate ? Number(f.floor_rate) : null,
     ceiling_rate: f.ceiling_rate ? Number(f.ceiling_rate) : null,
+    index_lookback_months: f.index_lookback_months ? Number(f.index_lookback_months) : 2,
   };
 }
