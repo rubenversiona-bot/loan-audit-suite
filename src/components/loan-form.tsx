@@ -91,7 +91,7 @@ export function LoanForm({ mode, initial, onSubmit, onCancel, submitLabel }: Pro
         toast.error("Sesión no válida");
         return;
       }
-      const path = `tmp-extract/${u.user.id}/${crypto.randomUUID()}.pdf`;
+      const path = `${u.user.id}/tmp-extract/${crypto.randomUUID()}.pdf`;
       const up = await supabase.storage.from("loan-documents").upload(path, file, {
         contentType: "application/pdf",
         upsert: false,
