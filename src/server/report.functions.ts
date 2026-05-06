@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { generateSchedule, type LoanInput, type IndexValuePoint } from "@/lib/mortgage/calculator";
 
 const Schema = z.object({ loanId: z.string().uuid() });
 
@@ -105,6 +106,59 @@ export const generateExpertReport = createServerFn({ method: "POST" })
     writeLine("De conformidad con el análisis efectuado sobre la documentación aportada,");
     writeLine("se constatan las discrepancias arriba detalladas que arrojan un importe");
     writeLine(`reclamable total de ${total.toFixed(2)} €.`);
+    sep(2);
+
+    // 6. CUADRO DE AMORTIZACIÓN RECALCULADO
+    let indexValues: IndexValuePoint[] = [];
+    if (loan.index_id) {
+      const { data: ivs } = await supabaseAdmin
+        .from("index_values")
+        .select("value_date, value")
+        .eq("index_id", loan.index_id)
+        .order("value_date");
+      indexValues = (ivs ?? []).map((v) => ({
+        date: new Date(v.value_date),
+        value: Number(v.value),
+      }));
+    }
+    const schedule = generateSchedule({
+      initialCapital: Number(loan.initial_capital),
+      termMonths: loan.term_months,
+      signedDate: new Date(loan.signed_date),
+      amortSystem: loan.amort_system,
+      rateType: loan.rate_type,
+      initialTin: Number(loan.initial_tin ?? 0),
+      floorRate: loan.floor_rate ? Number(loan.floor_rate) : null,
+      ceilingRate: loan.ceiling_rate ? Number(loan.ceiling_rate) : null,
+      spread: loan.spread != null ? Number(loan.spread) : 0,
+      reviewPeriodMonths: loan.review_period_months ?? 12,
+      fixedPeriodMonths: loan.fixed_period_months ?? 0,
+      lookbackMonths: (loan as { index_lookback_months?: number }).index_lookback_months ?? 2,
+      indexValues,
+    } as LoanInput);
+
+    page = addPage();
+    y = 800;
+    writeLine(`6. CUADRO DE AMORTIZACIÓN RECALCULADO (${schedule.length} cuotas)`, { font: bold, size: 13 });
+    sep();
+
+    // Cabecera de tabla en formato tabular monoespaciado simple
+    const header = "  #   Fecha        TIN%      Cuota       Interés     Capital     Pendiente";
+    writeLine(header, { font: bold, size: 9 });
+    const fmt = (n: number, w: number) => n.toFixed(2).padStart(w);
+    const fmtInt = (n: number, w: number) => String(n).padStart(w);
+    for (const r of schedule) {
+      const date = r.date.toISOString().slice(0, 10);
+      const line =
+        `${fmtInt(r.period, 4)}  ${date}  ` +
+        `${fmt(r.rateAnnual, 6)}  ${fmt(r.payment, 10)}  ` +
+        `${fmt(r.interest, 10)}  ${fmt(r.principal, 10)}  ${fmt(r.balance, 12)}` +
+        (r.isRevision ? "  *" : "");
+      writeLine(line, { size: 9 });
+    }
+    sep();
+    writeLine("(*) Periodos de revisión del tipo.", { size: 8, color: [0.4, 0.4, 0.4] });
+
 
     const bytes = await pdf.save();
     const base64 = Buffer.from(bytes).toString("base64");

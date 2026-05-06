@@ -4,10 +4,11 @@ import { useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { Loader2, Plus, Search, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { eur, fmtDate } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
@@ -30,13 +31,23 @@ function List() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("loans")
-        .select("id, debtor_name, bank_name, loan_number, signed_date, initial_capital, status")
+        .select("id, debtor_name, bank_name, loan_number, signed_date, initial_capital, status, expediente_ref, expediente_date")
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data ?? [];
     },
   });
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+
+  const q = search.trim().toLowerCase();
+  const filtered = q
+    ? loans.filter((l) =>
+        [l.debtor_name, l.bank_name, l.loan_number, (l as { expediente_ref?: string | null }).expediente_ref]
+          .filter(Boolean)
+          .some((v) => String(v).toLowerCase().includes(q)),
+      )
+    : loans;
 
   async function handleDelete(id: string) {
     setDeletingId(id);
@@ -53,7 +64,16 @@ function List() {
 
   return (
     <div className="space-y-4 max-w-6xl">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="relative flex-1 max-w-md">
+          <Search className="h-4 w-4 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por deudor, banco, nº préstamo o expediente…"
+            className="pl-8"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
         <Button asChild>
           <Link to="/prestamos/nuevo">
             <Plus className="h-4 w-4 mr-1" /> Nuevo préstamo
@@ -66,9 +86,15 @@ function List() {
             Sin préstamos. Crea el primero para comenzar el análisis pericial.
           </CardContent>
         </Card>
+      ) : filtered.length === 0 ? (
+        <Card>
+          <CardContent className="text-center py-12 text-muted-foreground">
+            No se han encontrado préstamos para «{search}».
+          </CardContent>
+        </Card>
       ) : (
         <div className="grid md:grid-cols-2 gap-3">
-          {loans.map((l) => (
+          {filtered.map((l) => (
             <Card key={l.id} className="hover:border-primary transition-colors">
               <CardContent className="pt-6">
                 <div className="flex justify-between items-start gap-2">
@@ -77,6 +103,14 @@ function List() {
                     <div className="text-xs text-muted-foreground mt-1 truncate">
                       {l.bank_name ?? "—"} · Nº {l.loan_number ?? "—"}
                     </div>
+                    {(l as { expediente_ref?: string | null }).expediente_ref && (
+                      <div className="text-xs text-muted-foreground truncate">
+                        Exp. {(l as { expediente_ref: string }).expediente_ref}
+                        {(l as { expediente_date?: string | null }).expediente_date && (
+                          <> · {fmtDate((l as { expediente_date: string }).expediente_date)}</>
+                        )}
+                      </div>
+                    )}
                   </Link>
                   <div className="flex items-center gap-2 shrink-0">
                     <Badge variant={l.status === "borrador" ? "secondary" : "default"}>{l.status}</Badge>

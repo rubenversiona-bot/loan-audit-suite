@@ -16,6 +16,8 @@ export interface LoanFormState {
   debtor_name: string;
   bank_name: string;
   loan_number: string;
+  expediente_ref: string;
+  expediente_date: string;
   signed_date: string;
   initial_capital: string;
   term_months: string;
@@ -35,6 +37,8 @@ export const emptyLoanForm: LoanFormState = {
   debtor_name: "",
   bank_name: "",
   loan_number: "",
+  expediente_ref: "",
+  expediente_date: "",
   signed_date: "",
   initial_capital: "",
   term_months: "",
@@ -207,6 +211,12 @@ export function LoanForm({ mode, initial, onSubmit, onCancel, submitLabel }: Pro
             <Field label="Fecha de firma" badge={aiBadge("signed_date")}>
               <Input type="date" required value={form.signed_date} onChange={(e) => set("signed_date", e.target.value)} />
             </Field>
+            <Field label="Nº expediente interno">
+              <Input value={form.expediente_ref} onChange={(e) => set("expediente_ref", e.target.value)} placeholder="Ej. EXP-2024-001" />
+            </Field>
+            <Field label="Fecha de introducción del expediente">
+              <Input type="date" value={form.expediente_date} onChange={(e) => set("expediente_date", e.target.value)} />
+            </Field>
             <Field label="Capital inicial (€)" badge={aiBadge("initial_capital")}>
               <Input type="number" step="0.01" required value={form.initial_capital} onChange={(e) => set("initial_capital", e.target.value)} />
             </Field>
@@ -315,6 +325,8 @@ export function loanRowToFormState(l: Record<string, unknown>): LoanFormState {
     debtor_name: v("debtor_name"),
     bank_name: v("bank_name"),
     loan_number: v("loan_number"),
+    expediente_ref: v("expediente_ref"),
+    expediente_date: v("expediente_date"),
     signed_date: v("signed_date"),
     initial_capital: v("initial_capital"),
     term_months: v("term_months"),
@@ -336,6 +348,8 @@ export function formStateToDbPayload(f: LoanFormState) {
     debtor_name: f.debtor_name,
     bank_name: f.bank_name || null,
     loan_number: f.loan_number || null,
+    expediente_ref: f.expediente_ref || null,
+    expediente_date: f.expediente_date || null,
     signed_date: f.signed_date,
     initial_capital: Number(f.initial_capital),
     term_months: Number(f.term_months),

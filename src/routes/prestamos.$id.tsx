@@ -12,6 +12,8 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { eur, fmtDate, pct } from "@/lib/format";
@@ -24,7 +26,7 @@ import { LoanForm, loanRowToFormState, formStateToDbPayload, type LoanFormState 
 import { deleteLoanCascade } from "@/lib/loans";
 import {
   LOAN_DOC_TYPES, type LoanDocType,
-  uploadLoanDocument, deleteLoanDocument, getDocumentSignedUrl, getDocumentBlobUrl,
+  uploadLoanDocument, deleteLoanDocument, getDocumentBlobUrl,
 } from "@/lib/loan-documents";
 const PdfViewer = lazy(() =>
   import("@/components/pdf-viewer").then((m) => ({ default: m.PdfViewer })),
@@ -57,6 +59,7 @@ function Detail() {
   const reportFn = useServerFn(generateExpertReport);
   const [downloading, setDownloading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [cuadroSearch, setCuadroSearch] = useState("");
 
   const { data: loan } = useQuery({
     queryKey: ["loan", id],
@@ -175,6 +178,17 @@ function Detail() {
               <div className="text-sm text-muted-foreground">
                 {loan.bank_name ?? "—"} · Nº {loan.loan_number ?? "—"} · Firma {fmtDate(loan.signed_date)}
               </div>
+              {((loan as { expediente_ref?: string | null }).expediente_ref ||
+                (loan as { expediente_date?: string | null }).expediente_date) && (
+                <div className="text-xs text-muted-foreground mt-1">
+                  Expediente: <span className="font-medium text-foreground">
+                    {(loan as { expediente_ref?: string | null }).expediente_ref ?? "—"}
+                  </span>
+                  {(loan as { expediente_date?: string | null }).expediente_date && (
+                    <> · Alta {fmtDate((loan as { expediente_date: string }).expediente_date)}</>
+                  )}
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-2">
               {loan.floor_rate != null && (
@@ -271,7 +285,15 @@ function Detail() {
         <TabsContent value="cuadro">
           <Card>
             <CardHeader>
-              <CardTitle>Cuadro de amortización recalculado ({schedule.length} cuotas)</CardTitle>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <CardTitle>Cuadro de amortización recalculado ({schedule.length} cuotas)</CardTitle>
+                <Input
+                  placeholder="Buscar #, fecha (YYYY-MM) o importe…"
+                  value={cuadroSearch}
+                  onChange={(e) => setCuadroSearch(e.target.value)}
+                  className="max-w-xs h-8"
+                />
+              </div>
               <div className="flex items-center gap-2 text-xs text-muted-foreground mt-2">
                 <span className="inline-block w-3 h-3 rounded-sm bg-muted border-l-2 border-l-primary/60" />
                 Periodos de revisión del tipo
@@ -299,7 +321,20 @@ function Detail() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {schedule.map((r) => {
+                  {schedule
+                    .filter((r) => {
+                      const q = cuadroSearch.trim().toLowerCase();
+                      if (!q) return true;
+                      const dateStr = r.date.toISOString().slice(0, 10);
+                      return (
+                        String(r.period).includes(q) ||
+                        dateStr.includes(q) ||
+                        fmtDate(r.date).toLowerCase().includes(q) ||
+                        r.payment.toFixed(2).includes(q) ||
+                        r.balance.toFixed(2).includes(q)
+                      );
+                    })
+                    .map((r) => {
                     const bank = bankByPeriod.get(r.period);
                     const delta =
                       bank && bank.payment != null ? r.payment - Number(bank.payment) : null;
@@ -667,7 +702,14 @@ function DocumentsTab({ loanId }: { loanId: string }) {
   const [uploading, setUploading] = useState(false);
   const [docType, setDocType] = useState<LoanDocType>("contrato");
   const [extractingId, setExtractingId] = useState<string | null>(null);
+  const [viewer, setViewer] = useState<{ name: string; url: string } | null>(null);
   const extractFn = useServerFn(extractFromDocument);
+
+  useEffect(() => {
+    return () => {
+      if (viewer?.url) URL.revokeObjectURL(viewer.url);
+    };
+  }, [viewer?.url]);
 
   async function refresh() {
     setLoading(true);
@@ -733,22 +775,15 @@ function DocumentsTab({ loanId }: { loanId: string }) {
   }
 
   async function onView(d: DocRow) {
-    if (!d.bucket || !d.file_path) return;
+    if (!d.bucket || !d.file_path) {
+      toast.error("Documento no disponible");
+      return;
+    }
     try {
       const u = await getDocumentBlobUrl(d.bucket, d.file_path);
-      const w = window.open(u, "_blank");
-      if (!w) {
-        // Si el popup está bloqueado, forzamos descarga vía enlace temporal
-        const a = document.createElement("a");
-        a.href = u;
-        a.target = "_blank";
-        a.rel = "noopener";
-        a.click();
-      }
-      // Liberamos la URL al cabo de un rato (el tab ya la habrá cargado)
-      setTimeout(() => URL.revokeObjectURL(u), 60_000);
+      setViewer({ name: d.file_name ?? "Documento", url: u });
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Error");
+      toast.error(e instanceof Error ? e.message : "No se pudo cargar el documento");
     }
   }
 
@@ -865,6 +900,28 @@ function DocumentsTab({ loanId }: { loanId: string }) {
           </Table>
         )}
       </CardContent>
+      <Dialog
+        open={!!viewer}
+        onOpenChange={(o) => {
+          if (!o) {
+            if (viewer?.url) URL.revokeObjectURL(viewer.url);
+            setViewer(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-5xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-4 w-4" /> {viewer?.name}
+            </DialogTitle>
+          </DialogHeader>
+          {viewer && (
+            <Suspense fallback={<Loader2 className="h-5 w-5 animate-spin" />}>
+              <PdfViewer fileUrl={viewer.url} />
+            </Suspense>
+          )}
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
