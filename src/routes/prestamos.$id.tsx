@@ -59,6 +59,8 @@ function Detail() {
   const reportFn = useServerFn(generateExpertReport);
   const [downloading, setDownloading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [cuadroSearch, setCuadroSearch] = useState("");
+  const [viewerDoc, setViewerDoc] = useState<{ name: string; url: string } | null>(null);
 
   const { data: loan } = useQuery({
     queryKey: ["loan", id],
