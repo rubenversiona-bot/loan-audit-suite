@@ -26,7 +26,10 @@ import {
   LOAN_DOC_TYPES, type LoanDocType,
   uploadLoanDocument, deleteLoanDocument, getDocumentSignedUrl, getDocumentBlobUrl,
 } from "@/lib/loan-documents";
-import { PdfViewer } from "@/components/pdf-viewer";
+import { lazy, Suspense } from "react";
+const PdfViewer = lazy(() =>
+  import("@/components/pdf-viewer").then((m) => ({ default: m.PdfViewer })),
+);
 import { cn } from "@/lib/utils";
 import {
   ResponsiveContainer,
