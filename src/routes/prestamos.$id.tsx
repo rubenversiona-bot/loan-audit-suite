@@ -583,3 +583,274 @@ function EditLoanTab({ id, loan }: { id: string; loan: Record<string, unknown> }
   }
   return <LoanForm mode="edit" initial={initial} onSubmit={handleSave} />;
 }
+
+interface DocRow {
+  id: string;
+  loan_id: string | null;
+  doc_type: string | null;
+  file_name: string | null;
+  file_path: string | null;
+  bucket: string | null;
+  size_bytes: number | null;
+  created_at: string;
+}
+
+function ContractTab({ loanId }: { loanId: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [doc, setDoc] = useState<DocRow | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      const { data } = await supabase
+        .from("documents")
+        .select("id, loan_id, doc_type, file_name, file_path, bucket, size_bytes, created_at")
+        .eq("loan_id", loanId)
+        .in("doc_type", ["contrato", "escritura"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (cancelled) return;
+      setDoc(data ?? null);
+      if (data?.bucket && data.file_path) {
+        try {
+          const u = await getDocumentSignedUrl(data.bucket, data.file_path, 3600);
+          if (!cancelled) setUrl(u);
+        } catch {
+          /* noop */
+        }
+      }
+      setLoading(false);
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [loanId]);
+
+  if (loading) {
+    return <Loader2 className="h-5 w-5 animate-spin" />;
+  }
+  if (!doc || !url) {
+    return (
+      <Card>
+        <CardContent className="py-6 text-sm text-muted-foreground">
+          No hay un contrato o escritura asociado todavía. Súbelo desde la pestaña{" "}
+          <strong>Documentos</strong>.
+        </CardContent>
+      </Card>
+    );
+  }
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <FileText className="h-4 w-4" /> {doc.file_name ?? "Contrato"}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <PdfViewer fileUrl={url} />
+      </CardContent>
+    </Card>
+  );
+}
+
+function DocumentsTab({ loanId }: { loanId: string }) {
+  const [docs, setDocs] = useState<DocRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [docType, setDocType] = useState<LoanDocType>("contrato");
+  const [extractingId, setExtractingId] = useState<string | null>(null);
+  const extractFn = useServerFn(extractFromDocument);
+
+  async function refresh() {
+    setLoading(true);
+    const { data } = await supabase
+      .from("documents")
+      .select("id, loan_id, doc_type, file_name, file_path, bucket, size_bytes, created_at")
+      .eq("loan_id", loanId)
+      .order("created_at", { ascending: false });
+    setDocs(data ?? []);
+    setLoading(false);
+  }
+  useEffect(() => {
+    refresh();
+  }, [loanId]);
+
+  async function onUpload(file: File) {
+    if (file.size > 25 * 1024 * 1024) {
+      toast.error("El archivo supera 25 MB.");
+      return;
+    }
+    setUploading(true);
+    try {
+      await uploadLoanDocument(loanId, file, docType);
+      toast.success("Documento subido");
+      refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Error al subir");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function onDelete(d: DocRow) {
+    try {
+      await deleteLoanDocument(d);
+      toast.success("Documento eliminado");
+      refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Error");
+    }
+  }
+
+  async function onExtract(d: DocRow) {
+    setExtractingId(d.id);
+    try {
+      const r = await extractFn({ data: { documentId: d.id } });
+      if (!r.ok) {
+        toast.error(r.error ?? "Error en la extracción");
+        return;
+      }
+      if (r.kind === "cuadro_banco") {
+        toast.success(`Cuadro extraído: ${r.count} filas. Disponible en "Cuadro recalculado".`);
+      } else if (r.kind === "recibo") {
+        toast.success(`${r.count} movimientos añadidos a Eventos.`);
+      } else {
+        toast.success("Datos extraídos. Revisa la pestaña Datos para aplicar cambios.");
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Error");
+    } finally {
+      setExtractingId(null);
+    }
+  }
+
+  async function onView(d: DocRow) {
+    if (!d.bucket || !d.file_path) return;
+    try {
+      const u = await getDocumentSignedUrl(d.bucket, d.file_path);
+      window.open(u, "_blank");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Error");
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Documentos del préstamo</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap items-center gap-2 border rounded-md p-3 bg-muted/30">
+          <span className="text-sm text-muted-foreground">Tipo:</span>
+          <Select value={docType} onValueChange={(v) => setDocType(v as LoanDocType)}>
+            <SelectTrigger className="w-64"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {LOAN_DOC_TYPES.map((t) => (
+                <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <label className="ml-2">
+            <input
+              type="file"
+              accept="application/pdf"
+              className="hidden"
+              disabled={uploading}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.currentTarget.value = "";
+                if (f) onUpload(f);
+              }}
+            />
+            <span>
+              <Button asChild size="sm" disabled={uploading}>
+                <span className="cursor-pointer">
+                  {uploading ? (
+                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  ) : (
+                    <Upload className="h-4 w-4 mr-1" />
+                  )}
+                  Subir PDF
+                </span>
+              </Button>
+            </span>
+          </label>
+          <span className="text-xs text-muted-foreground ml-auto">Máx. 25 MB</span>
+        </div>
+
+        {loading ? (
+          <Loader2 className="h-5 w-5 animate-spin" />
+        ) : docs.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Sin documentos.</p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Archivo</TableHead>
+                <TableHead>Tipo</TableHead>
+                <TableHead>Subido</TableHead>
+                <TableHead className="text-right">Tamaño</TableHead>
+                <TableHead className="text-right">Acciones</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {docs.map((d) => (
+                <TableRow key={d.id}>
+                  <TableCell className="max-w-[280px] truncate">{d.file_name ?? "—"}</TableCell>
+                  <TableCell>
+                    <Badge variant="outline">{d.doc_type ?? "otro"}</Badge>
+                  </TableCell>
+                  <TableCell>{fmtDate(d.created_at)}</TableCell>
+                  <TableCell className="text-right">
+                    {d.size_bytes ? `${(d.size_bytes / 1024).toFixed(0)} KB` : "—"}
+                  </TableCell>
+                  <TableCell className="text-right space-x-1">
+                    <Button size="sm" variant="ghost" onClick={() => onView(d)}>Ver</Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={extractingId === d.id}
+                      onClick={() => onExtract(d)}
+                    >
+                      {extractingId === d.id ? (
+                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-3 w-3 mr-1" />
+                      )}
+                      Extraer
+                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button size="sm" variant="destructive">
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>¿Eliminar documento?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Se borrará el archivo y los datos extraídos asociados.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => onDelete(d)}>
+                            Eliminar
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
