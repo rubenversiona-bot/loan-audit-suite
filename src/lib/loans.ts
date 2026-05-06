@@ -1,6 +1,11 @@
 import { supabase } from "@/integrations/supabase/client";
 
 export async function deleteLoanCascade(loanId: string): Promise<void> {
+  // bank_amortization_rows
+  {
+    const { error } = await supabase.from("bank_amortization_rows").delete().eq("loan_id", loanId);
+    if (error) throw error;
+  }
   // discrepancies
   {
     const { error } = await supabase.from("discrepancies").delete().eq("loan_id", loanId);
