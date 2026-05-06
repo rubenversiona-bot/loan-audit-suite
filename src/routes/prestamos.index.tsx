@@ -31,13 +31,23 @@ function List() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("loans")
-        .select("id, debtor_name, bank_name, loan_number, signed_date, initial_capital, status")
+        .select("id, debtor_name, bank_name, loan_number, signed_date, initial_capital, status, expediente_ref, expediente_date")
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data ?? [];
     },
   });
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+
+  const q = search.trim().toLowerCase();
+  const filtered = q
+    ? loans.filter((l) =>
+        [l.debtor_name, l.bank_name, l.loan_number, (l as { expediente_ref?: string | null }).expediente_ref]
+          .filter(Boolean)
+          .some((v) => String(v).toLowerCase().includes(q)),
+      )
+    : loans;
 
   async function handleDelete(id: string) {
     setDeletingId(id);
