@@ -232,6 +232,8 @@ function Detail() {
           <TabsTrigger value="cuadro">Cuadro recalculado</TabsTrigger>
           <TabsTrigger value="eventos">Eventos</TabsTrigger>
           <TabsTrigger value="discrepancias">Discrepancias</TabsTrigger>
+          <TabsTrigger value="contrato">Contrato</TabsTrigger>
+          <TabsTrigger value="documentos">Documentos</TabsTrigger>
         </TabsList>
 
         <TabsContent value="datos">
@@ -266,7 +268,19 @@ function Detail() {
 
         <TabsContent value="cuadro">
           <Card>
-            <CardHeader><CardTitle>Cuadro de amortización recalculado ({schedule.length} cuotas)</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle>Cuadro de amortización recalculado ({schedule.length} cuotas)</CardTitle>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground mt-2">
+                <span className="inline-block w-3 h-3 rounded-sm bg-muted border-l-2 border-l-primary/60" />
+                Periodos de revisión del tipo
+                {hasBank && (
+                  <>
+                    <span className="ml-4">·</span>
+                    <span>Δ vs cuadro del banco</span>
+                  </>
+                )}
+              </div>
+            </CardHeader>
             <CardContent className="overflow-auto max-h-[600px]">
               <Table>
                 <TableHeader>
@@ -278,20 +292,65 @@ function Detail() {
                     <TableHead className="text-right">Interés</TableHead>
                     <TableHead className="text-right">Capital</TableHead>
                     <TableHead className="text-right">Pendiente</TableHead>
+                    {hasBank && <TableHead className="text-right">Banco</TableHead>}
+                    {hasBank && <TableHead className="text-right">Δ</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {schedule.map((r) => (
-                    <TableRow key={r.period}>
-                      <TableCell>{r.period}</TableCell>
-                      <TableCell>{fmtDate(r.date)}</TableCell>
-                      <TableCell className="text-right">{pct(r.rateAnnual)}</TableCell>
-                      <TableCell className="text-right">{eur.format(r.payment)}</TableCell>
-                      <TableCell className="text-right">{eur.format(r.interest)}</TableCell>
-                      <TableCell className="text-right">{eur.format(r.principal)}</TableCell>
-                      <TableCell className="text-right">{eur.format(r.balance)}</TableCell>
-                    </TableRow>
-                  ))}
+                  {schedule.map((r) => {
+                    const bank = bankByPeriod.get(r.period);
+                    const delta =
+                      bank && bank.payment != null ? r.payment - Number(bank.payment) : null;
+                    return (
+                      <TableRow
+                        key={r.period}
+                        className={cn(
+                          r.isRevision &&
+                            "bg-muted/60 hover:bg-muted border-l-2 border-l-primary/60 font-medium",
+                        )}
+                      >
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <span>{r.period}</span>
+                            {r.isRevision && (
+                              <Badge variant="secondary" className="text-[10px] py-0 px-1.5">
+                                Revisión
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>{fmtDate(r.date)}</TableCell>
+                        <TableCell className="text-right">
+                          {pct(r.rateAnnual)}
+                          {r.indexValue != null && (
+                            <span className="block text-[10px] text-muted-foreground">
+                              índice {pct(r.indexValue)}
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">{eur.format(r.payment)}</TableCell>
+                        <TableCell className="text-right">{eur.format(r.interest)}</TableCell>
+                        <TableCell className="text-right">{eur.format(r.principal)}</TableCell>
+                        <TableCell className="text-right">{eur.format(r.balance)}</TableCell>
+                        {hasBank && (
+                          <TableCell className="text-right">
+                            {bank?.payment != null ? eur.format(Number(bank.payment)) : "—"}
+                          </TableCell>
+                        )}
+                        {hasBank && (
+                          <TableCell
+                            className={cn(
+                              "text-right",
+                              delta != null && Math.abs(delta) > 1 && delta > 0 && "text-destructive",
+                              delta != null && Math.abs(delta) > 1 && delta < 0 && "text-emerald-600",
+                            )}
+                          >
+                            {delta != null ? eur.format(delta) : "—"}
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </CardContent>
