@@ -211,6 +211,12 @@ export function LoanForm({ mode, initial, onSubmit, onCancel, submitLabel }: Pro
             <Field label="Fecha de firma" badge={aiBadge("signed_date")}>
               <Input type="date" required value={form.signed_date} onChange={(e) => set("signed_date", e.target.value)} />
             </Field>
+            <Field label="Nº expediente interno">
+              <Input value={form.expediente_ref} onChange={(e) => set("expediente_ref", e.target.value)} placeholder="Ej. EXP-2024-001" />
+            </Field>
+            <Field label="Fecha de introducción del expediente">
+              <Input type="date" value={form.expediente_date} onChange={(e) => set("expediente_date", e.target.value)} />
+            </Field>
             <Field label="Capital inicial (€)" badge={aiBadge("initial_capital")}>
               <Input type="number" step="0.01" required value={form.initial_capital} onChange={(e) => set("initial_capital", e.target.value)} />
             </Field>
