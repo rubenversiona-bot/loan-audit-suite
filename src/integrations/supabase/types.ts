@@ -14,6 +14,51 @@ export type Database = {
   }
   public: {
     Tables: {
+      bank_amortization_rows: {
+        Row: {
+          balance: number | null
+          created_at: string
+          document_id: string
+          due_date: string | null
+          id: string
+          interest: number | null
+          loan_id: string
+          owner_id: string
+          payment: number | null
+          period: number
+          principal: number | null
+          rate: number | null
+        }
+        Insert: {
+          balance?: number | null
+          created_at?: string
+          document_id: string
+          due_date?: string | null
+          id?: string
+          interest?: number | null
+          loan_id: string
+          owner_id: string
+          payment?: number | null
+          period: number
+          principal?: number | null
+          rate?: number | null
+        }
+        Update: {
+          balance?: number | null
+          created_at?: string
+          document_id?: string
+          due_date?: string | null
+          id?: string
+          interest?: number | null
+          loan_id?: string
+          owner_id?: string
+          payment?: number | null
+          period?: number
+          principal?: number | null
+          rate?: number | null
+        }
+        Relationships: []
+      }
       bank_statements: {
         Row: {
           file_path: string | null
@@ -245,6 +290,7 @@ export type Database = {
           floor_rate: number | null
           id: string
           index_id: string | null
+          index_lookback_months: number
           initial_capital: number
           initial_tin: number | null
           loan_number: string | null
@@ -273,6 +319,7 @@ export type Database = {
           floor_rate?: number | null
           id?: string
           index_id?: string | null
+          index_lookback_months?: number
           initial_capital: number
           initial_tin?: number | null
           loan_number?: string | null
@@ -301,6 +348,7 @@ export type Database = {
           floor_rate?: number | null
           id?: string
           index_id?: string | null
+          index_lookback_months?: number
           initial_capital?: number
           initial_tin?: number | null
           loan_number?: string | null
