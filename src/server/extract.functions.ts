@@ -216,17 +216,21 @@ export const extractFromDocument = createServerFn({ method: "POST" })
             .from("bank_amortization_rows")
             .delete()
             .eq("document_id", doc.id);
+          const num = (x: unknown): number | null =>
+            x == null || x === "" ? null : Number(x);
+          const str = (x: unknown): string | null =>
+            x == null || x === "" ? null : String(x);
           const inserts = rows.map((r) => ({
-            loan_id: doc.loan_id,
+            loan_id: doc.loan_id as string,
             document_id: doc.id,
             owner_id: userId,
             period: Number(r.period ?? 0),
-            due_date: r.due_date ?? null,
-            payment: r.payment ?? null,
-            interest: r.interest ?? null,
-            principal: r.principal ?? null,
-            balance: r.balance ?? null,
-            rate: r.rate ?? null,
+            due_date: str(r.due_date),
+            payment: num(r.payment),
+            interest: num(r.interest),
+            principal: num(r.principal),
+            balance: num(r.balance),
+            rate: num(r.rate),
           }));
           await supabaseAdmin.from("bank_amortization_rows").insert(inserts);
         }
@@ -244,10 +248,16 @@ export const extractFromDocument = createServerFn({ method: "POST" })
         const movs: Array<Record<string, unknown>> = parsed.movements ?? [];
         if (doc.loan_id && movs.length > 0) {
           const inserts = movs.map((m) => ({
-            loan_id: doc.loan_id,
+            loan_id: doc.loan_id as string,
             event_date: (m.date as string) ?? new Date().toISOString().slice(0, 10),
-            event_type: ((m.type as string) ?? "pago_programado") as never,
-            amount: m.amount ?? null,
+            event_type: ((m.type as string) ?? "pago_programado") as
+              | "pago_programado"
+              | "amortizacion_anticipada"
+              | "comision"
+              | "mora"
+              | "cambio_tasa"
+              | "novacion",
+            amount: m.amount == null ? null : Number(m.amount),
             description: (m.concept as string) ?? null,
           }));
           await supabaseAdmin.from("loan_events").insert(inserts);
