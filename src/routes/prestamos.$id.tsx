@@ -285,7 +285,15 @@ function Detail() {
         <TabsContent value="cuadro">
           <Card>
             <CardHeader>
-              <CardTitle>Cuadro de amortización recalculado ({schedule.length} cuotas)</CardTitle>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <CardTitle>Cuadro de amortización recalculado ({schedule.length} cuotas)</CardTitle>
+                <Input
+                  placeholder="Buscar #, fecha (YYYY-MM) o importe…"
+                  value={cuadroSearch}
+                  onChange={(e) => setCuadroSearch(e.target.value)}
+                  className="max-w-xs h-8"
+                />
+              </div>
               <div className="flex items-center gap-2 text-xs text-muted-foreground mt-2">
                 <span className="inline-block w-3 h-3 rounded-sm bg-muted border-l-2 border-l-primary/60" />
                 Periodos de revisión del tipo
