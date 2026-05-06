@@ -180,10 +180,15 @@ function Detail() {
       <Tabs defaultValue="resumen">
         <TabsList>
           <TabsTrigger value="resumen">Resumen</TabsTrigger>
+          <TabsTrigger value="datos">Datos</TabsTrigger>
           <TabsTrigger value="cuadro">Cuadro recalculado</TabsTrigger>
           <TabsTrigger value="eventos">Eventos</TabsTrigger>
           <TabsTrigger value="discrepancias">Discrepancias</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="datos">
+          <EditLoanTab id={id} loan={loan as Record<string, unknown>} />
+        </TabsContent>
 
         <TabsContent value="resumen" className="space-y-4">
           <div className="grid md:grid-cols-3 gap-4">
