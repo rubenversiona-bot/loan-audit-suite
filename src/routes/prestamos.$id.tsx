@@ -321,7 +321,20 @@ function Detail() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {schedule.map((r) => {
+                  {schedule
+                    .filter((r) => {
+                      const q = cuadroSearch.trim().toLowerCase();
+                      if (!q) return true;
+                      const dateStr = r.date.toISOString().slice(0, 10);
+                      return (
+                        String(r.period).includes(q) ||
+                        dateStr.includes(q) ||
+                        fmtDate(r.date).toLowerCase().includes(q) ||
+                        r.payment.toFixed(2).includes(q) ||
+                        r.balance.toFixed(2).includes(q)
+                      );
+                    })
+                    .map((r) => {
                     const bank = bankByPeriod.get(r.period);
                     const delta =
                       bank && bank.payment != null ? r.payment - Number(bank.payment) : null;
