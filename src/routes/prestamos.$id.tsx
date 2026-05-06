@@ -43,8 +43,10 @@ export const Route = createFileRoute("/prestamos/$id")({
 
 function Detail() {
   const { id } = useParams({ from: "/prestamos/$id" });
+  const nav = useNavigate();
   const reportFn = useServerFn(generateExpertReport);
   const [downloading, setDownloading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const { data: loan } = useQuery({
     queryKey: ["loan", id],
