@@ -348,6 +348,8 @@ export function formStateToDbPayload(f: LoanFormState) {
     debtor_name: f.debtor_name,
     bank_name: f.bank_name || null,
     loan_number: f.loan_number || null,
+    expediente_ref: f.expediente_ref || null,
+    expediente_date: f.expediente_date || null,
     signed_date: f.signed_date,
     initial_capital: Number(f.initial_capital),
     term_months: Number(f.term_months),
