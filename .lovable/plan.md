@@ -1,62 +1,50 @@
-## Plan (actualizado)
+## Mejoras de estilo del cuadro de amortización (PDF)
 
-Mismas mejoras del plan anterior + **destacar visualmente las filas de revisión** en el cuadro de amortización.
+Se reescribe la sección "6. CUADRO DE AMORTIZACIÓN RECALCULADO" en `src/server/report.functions.ts` usando primitivas de dibujo de `pdf-lib` (rectángulos + texto posicionado) en lugar de texto monoespaciado.
 
-### 1. Cuadro de amortización con revisiones reales
-- Migración: `loans.index_lookback_months int not null default 2`.
-- `src/lib/mortgage/calculator.ts`:
-  - Extender `LoanInput` con `indexValues`, `spread`, `reviewPeriodMonths`, `lookbackMonths`.
-  - `buildRateAt(date)`: busca último valor del índice con `value_date ≤ date − lookbackMonths`, devuelve `value + spread`. Fallback: congelar último valor conocido.
-  - `generateSchedule`: aplicar nuevo TIN solo en periodos de revisión y **recalcular cuota francesa** con saldo restante.
-  - Añadir flag `isRevision: boolean` en cada `AmortRow` (true en periodo 1, fin del tramo fijo y cada revisión posterior).
+### Cambios visuales
 
-### 2. Campo "desfase del índice" (1 / 2 meses)
-- `loan-form.tsx`: `<Select>` visible si `rate_type !== "fijo"`.
-- `extract.functions.ts`: añadir `index_lookback_months: 1|2` (default 2) al schema y al prompt.
-- `prestamos.nuevo.tsx`: incluir en el insert.
+1. **Encabezado de tabla destacado y repetido en cada página**
+   - Banda gris medio (`rgb(0.85, 0.85, 0.88)`) de ~18 px de alto que ocupa el ancho útil de la página.
+   - Texto en `Helvetica-Bold` 9 pt, color oscuro.
+   - Se redibuja automáticamente al saltar de página (helper `drawTableHeader()` invocado tras cada `addPage`).
 
-### 3. Visor PDF con paginación + búsqueda
-- `bun add react-pdf`.
-- `src/components/pdf-viewer.tsx`: controles ←/→, input de página, input de búsqueda con `customTextRenderer` que envuelve coincidencias en `<mark>`. Worker cargado solo en cliente.
-- Tab nuevo **"Contrato"** en `prestamos.$id.tsx` con signed URL del documento `contrato`.
+2. **Columnas con anchos fijos y alineación**
+   - Definición declarativa de columnas con `{ key, label, width, align }`.
+   - `#` centrado; `Fecha` a la izquierda; `TIN%`, `Cuota`, `Interés`, `Capital`, `Pendiente` alineadas a la derecha (calculando `x = colRight - font.widthOfTextAtSize(text, size)`).
+   - Anchos pensados para A4 con márgenes de 50 px (≈495 px útiles).
 
-### 4. Documentos adicionales con extracción IA
-- `src/lib/loan-documents.ts`: `uploadLoanDocument`, `deleteLoanDocument`.
-- Tipos: `contrato`, `cuadro_banco`, `recibo`, `escritura`, `otro`.
-- Tab **"Documentos"** con listado, subida (selector `doc_type`), borrado con confirmación y botón "Extraer datos".
-- Server fn `extractFromDocument({ documentId })`:
-  - `cuadro_banco` → filas a tabla nueva `bank_amortization_rows` para comparar con el cuadro recalculado.
-  - `recibo` → inserta movimientos en `loan_events`.
-  - `contrato`/`escritura`/`otro` → propone diff de campos del préstamo.
-- Migración: tabla `bank_amortization_rows` con RLS owner.
+3. **Filas de revisión resaltadas**
+   - Antes de dibujar el texto de la fila, si `isRevision` es `true` se pinta un rectángulo de fondo gris claro (`rgb(0.93, 0.93, 0.95)`) que abarca toda la fila.
+   - Se mantiene el asterisco `*` al final de la fila como indicador adicional.
 
-### 5. NUEVO — Resaltar filas de revisión en el cuadro
+4. **Detalles de pulido**
+   - Línea separadora fina bajo la cabecera.
+   - Interlineado de fila ligeramente mayor (12 px) para legibilidad.
+   - Pie de tabla: leyenda "(*) Periodos de revisión del tipo." en gris.
+   - Control de salto de página: si `y < margin + rowH`, se añade página y se redibuja el encabezado.
 
-`src/routes/prestamos.$id.tsx`, en el render del cuadro recalculado:
-
-- Mantener estilo coherente con shadcn (sin colores fuertes, solo tono de superficie).
-- Aplicar a `<TableRow>` cuando `row.isRevision`:
-  ```tsx
-  className={cn(row.isRevision && "bg-muted/60 hover:bg-muted border-l-2 border-l-primary/60 font-medium")}
-  ```
-  - `bg-muted/60`: fondo suave que respeta el tema (claro y oscuro).
-  - Borde izquierdo `border-l-primary/60` como acento sutil.
-  - Texto en `font-medium` para distinguir sin gritar.
-- Añadir `<Badge variant="secondary" className="ml-2">Revisión</Badge>` al lado del periodo en esas filas.
-- Leyenda discreta encima de la tabla: cuadrito `bg-muted/60` + "Periodos de revisión del tipo".
-- Si existe comparativa con `bank_amortization_rows`, las celdas Δ con desviación > 0,5% se marcan en `text-destructive`/`text-emerald-600` (independiente del resaltado de revisión).
-
-### Archivos
+### Detalle técnico
 
 ```text
-src/lib/mortgage/calculator.ts        edit  — isRevision + buildRateAt
-src/lib/loan-documents.ts             new
-src/components/loan-form.tsx          edit  — campo lookback
-src/components/pdf-viewer.tsx         new
-src/routes/prestamos.$id.tsx          edit  — tabs + filas resaltadas + leyenda
-src/routes/prestamos.nuevo.tsx        edit
-src/server/extract.functions.ts       edit  — lookback + extractFromDocument
-supabase/migrations/<ts>.sql          new   — index_lookback_months + bank_amortization_rows
+COLS = [
+  { key:'period',   label:'#',         w: 28, align:'right' },
+  { key:'date',     label:'Fecha',     w: 70, align:'left'  },
+  { key:'rate',     label:'TIN %',     w: 50, align:'right' },
+  { key:'payment',  label:'Cuota',     w: 75, align:'right' },
+  { key:'interest', label:'Interés',   w: 75, align:'right' },
+  { key:'principal',label:'Capital',   w: 75, align:'right' },
+  { key:'balance',  label:'Pendiente', w: 90, align:'right' },
+]
 ```
 
-Una vez aprobado, lo implemento todo de una vez.
+Helpers internos:
+- `drawTableHeader(page, y)` → pinta banda + labels y devuelve nuevo `y`.
+- `drawRow(page, y, row)` → pinta fondo (si revisión), celdas alineadas y `*` al final.
+- `ensureSpace(rowH)` → si no cabe, `addPage()` + `drawTableHeader()`.
+
+No se tocan otras secciones del informe ni la lógica de cálculo (`generateSchedule` se sigue usando tal cual).
+
+### Archivos modificados
+
+- `src/server/report.functions.ts` — reemplazar el bloque de la sección 6 por el nuevo render tabular.
