@@ -175,6 +175,17 @@ function Detail() {
               <div className="text-sm text-muted-foreground">
                 {loan.bank_name ?? "—"} · Nº {loan.loan_number ?? "—"} · Firma {fmtDate(loan.signed_date)}
               </div>
+              {((loan as { expediente_ref?: string | null }).expediente_ref ||
+                (loan as { expediente_date?: string | null }).expediente_date) && (
+                <div className="text-xs text-muted-foreground mt-1">
+                  Expediente: <span className="font-medium text-foreground">
+                    {(loan as { expediente_ref?: string | null }).expediente_ref ?? "—"}
+                  </span>
+                  {(loan as { expediente_date?: string | null }).expediente_date && (
+                    <> · Alta {fmtDate((loan as { expediente_date: string }).expediente_date)}</>
+                  )}
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-2">
               {loan.floor_rate != null && (
