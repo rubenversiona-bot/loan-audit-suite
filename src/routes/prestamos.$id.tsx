@@ -1,4 +1,4 @@
-import { createFileRoute, useParams } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, useParams } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
@@ -8,12 +8,18 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { eur, fmtDate, pct } from "@/lib/format";
 import { generateSchedule, totalInterest, type LoanInput } from "@/lib/mortgage/calculator";
 import { generateExpertReport } from "@/server/report.functions";
-import { Loader2, FileDown, AlertTriangle } from "lucide-react";
+import { Loader2, FileDown, AlertTriangle, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { LoanForm, loanRowToFormState, formStateToDbPayload, type LoanFormState } from "@/components/loan-form";
+import { deleteLoanCascade } from "@/lib/loans";
 import {
   ResponsiveContainer,
   BarChart,
@@ -37,8 +43,10 @@ export const Route = createFileRoute("/prestamos/$id")({
 
 function Detail() {
   const { id } = useParams({ from: "/prestamos/$id" });
+  const nav = useNavigate();
   const reportFn = useServerFn(generateExpertReport);
   const [downloading, setDownloading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const { data: loan } = useQuery({
     queryKey: ["loan", id],
@@ -129,6 +137,41 @@ function Detail() {
                 {downloading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <FileDown className="h-4 w-4 mr-1" />}
                 Generar informe pericial
               </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" disabled={deleting}>
+                    {deleting ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Trash2 className="h-4 w-4 mr-1" />}
+                    Eliminar
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>¿Eliminar este préstamo?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Se borrarán también todos los eventos, discrepancias, extractos y documentos asociados. Esta acción no se puede deshacer.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={async () => {
+                        setDeleting(true);
+                        try {
+                          await deleteLoanCascade(id);
+                          toast.success("Préstamo eliminado");
+                          nav({ to: "/prestamos" });
+                        } catch (e) {
+                          toast.error(e instanceof Error ? e.message : "Error al eliminar");
+                        } finally {
+                          setDeleting(false);
+                        }
+                      }}
+                    >
+                      Eliminar definitivamente
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           </div>
         </CardContent>
@@ -137,10 +180,15 @@ function Detail() {
       <Tabs defaultValue="resumen">
         <TabsList>
           <TabsTrigger value="resumen">Resumen</TabsTrigger>
+          <TabsTrigger value="datos">Datos</TabsTrigger>
           <TabsTrigger value="cuadro">Cuadro recalculado</TabsTrigger>
           <TabsTrigger value="eventos">Eventos</TabsTrigger>
           <TabsTrigger value="discrepancias">Discrepancias</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="datos">
+          <EditLoanTab id={id} loan={loan as Record<string, unknown>} />
+        </TabsContent>
 
         <TabsContent value="resumen" className="space-y-4">
           <div className="grid md:grid-cols-3 gap-4">
@@ -402,4 +450,21 @@ function b64ToBlob(b64: string, type: string): Blob {
   const arr = new Uint8Array(bytes.length);
   for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
   return new Blob([arr], { type });
+}
+
+function EditLoanTab({ id, loan }: { id: string; loan: Record<string, unknown> }) {
+  const initial = loanRowToFormState(loan);
+  async function handleSave(values: LoanFormState) {
+    const { error } = await supabase
+      .from("loans")
+      .update(formStateToDbPayload(values))
+      .eq("id", id);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success("Préstamo actualizado");
+    location.reload();
+  }
+  return <LoanForm mode="edit" initial={initial} onSubmit={handleSave} />;
 }
