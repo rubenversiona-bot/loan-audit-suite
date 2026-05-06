@@ -24,7 +24,7 @@ import { LoanForm, loanRowToFormState, formStateToDbPayload, type LoanFormState 
 import { deleteLoanCascade } from "@/lib/loans";
 import {
   LOAN_DOC_TYPES, type LoanDocType,
-  uploadLoanDocument, deleteLoanDocument, getDocumentSignedUrl,
+  uploadLoanDocument, deleteLoanDocument, getDocumentSignedUrl, getDocumentBlobUrl,
 } from "@/lib/loan-documents";
 import { PdfViewer } from "@/components/pdf-viewer";
 import { cn } from "@/lib/utils";
@@ -616,7 +616,7 @@ function ContractTab({ loanId }: { loanId: string }) {
       setDoc(data ?? null);
       if (data?.bucket && data.file_path) {
         try {
-          const u = await getDocumentSignedUrl(data.bucket, data.file_path, 3600);
+          const u = await getDocumentBlobUrl(data.bucket, data.file_path);
           if (!cancelled) setUrl(u);
         } catch {
           /* noop */
@@ -731,8 +731,18 @@ function DocumentsTab({ loanId }: { loanId: string }) {
   async function onView(d: DocRow) {
     if (!d.bucket || !d.file_path) return;
     try {
-      const u = await getDocumentSignedUrl(d.bucket, d.file_path);
-      window.open(u, "_blank");
+      const u = await getDocumentBlobUrl(d.bucket, d.file_path);
+      const w = window.open(u, "_blank");
+      if (!w) {
+        // Si el popup está bloqueado, forzamos descarga vía enlace temporal
+        const a = document.createElement("a");
+        a.href = u;
+        a.target = "_blank";
+        a.rel = "noopener";
+        a.click();
+      }
+      // Liberamos la URL al cabo de un rato (el tab ya la habrá cargado)
+      setTimeout(() => URL.revokeObjectURL(u), 60_000);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Error");
     }
