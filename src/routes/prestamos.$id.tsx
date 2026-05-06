@@ -26,7 +26,7 @@ import { LoanForm, loanRowToFormState, formStateToDbPayload, type LoanFormState 
 import { deleteLoanCascade } from "@/lib/loans";
 import {
   LOAN_DOC_TYPES, type LoanDocType,
-  uploadLoanDocument, deleteLoanDocument, getDocumentSignedUrl, getDocumentBlobUrl,
+  uploadLoanDocument, deleteLoanDocument, getDocumentBlobUrl,
 } from "@/lib/loan-documents";
 const PdfViewer = lazy(() =>
   import("@/components/pdf-viewer").then((m) => ({ default: m.PdfViewer })),
