@@ -653,7 +653,9 @@ function ContractTab({ loanId }: { loanId: string }) {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <PdfViewer fileUrl={url} />
+        <Suspense fallback={<Loader2 className="h-5 w-5 animate-spin" />}>
+          <PdfViewer fileUrl={url} />
+        </Suspense>
       </CardContent>
     </Card>
   );
