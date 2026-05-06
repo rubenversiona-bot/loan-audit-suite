@@ -286,6 +286,8 @@ export type Database = {
           day_count_basis: string
           debtor_name: string
           early_repay_fee_pct: number | null
+          expediente_date: string | null
+          expediente_ref: string | null
           fixed_period_months: number | null
           floor_rate: number | null
           id: string
@@ -315,6 +317,8 @@ export type Database = {
           day_count_basis?: string
           debtor_name: string
           early_repay_fee_pct?: number | null
+          expediente_date?: string | null
+          expediente_ref?: string | null
           fixed_period_months?: number | null
           floor_rate?: number | null
           id?: string
@@ -344,6 +348,8 @@ export type Database = {
           day_count_basis?: string
           debtor_name?: string
           early_repay_fee_pct?: number | null
+          expediente_date?: string | null
+          expediente_ref?: string | null
           fixed_period_months?: number | null
           floor_rate?: number | null
           id?: string
