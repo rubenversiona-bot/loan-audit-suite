@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { generateSchedule, type LoanInput, type IndexValuePoint } from "@/lib/mortgage/calculator";
 
 const Schema = z.object({ loanId: z.string().uuid() });
 
