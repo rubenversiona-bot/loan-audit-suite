@@ -137,6 +137,41 @@ function Detail() {
                 {downloading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <FileDown className="h-4 w-4 mr-1" />}
                 Generar informe pericial
               </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" disabled={deleting}>
+                    {deleting ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Trash2 className="h-4 w-4 mr-1" />}
+                    Eliminar
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>¿Eliminar este préstamo?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Se borrarán también todos los eventos, discrepancias, extractos y documentos asociados. Esta acción no se puede deshacer.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={async () => {
+                        setDeleting(true);
+                        try {
+                          await deleteLoanCascade(id);
+                          toast.success("Préstamo eliminado");
+                          nav({ to: "/prestamos" });
+                        } catch (e) {
+                          toast.error(e instanceof Error ? e.message : "Error al eliminar");
+                        } finally {
+                          setDeleting(false);
+                        }
+                      }}
+                    >
+                      Eliminar definitivamente
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           </div>
         </CardContent>
