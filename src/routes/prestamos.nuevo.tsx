@@ -27,7 +27,10 @@ function NewLoan() {
       })
       .select()
       .single();
-    if (error) return toast.error(error.message);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
     toast.success("Préstamo creado");
     nav({ to: "/prestamos/$id", params: { id: data.id } });
   }
