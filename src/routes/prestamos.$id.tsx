@@ -775,22 +775,15 @@ function DocumentsTab({ loanId }: { loanId: string }) {
   }
 
   async function onView(d: DocRow) {
-    if (!d.bucket || !d.file_path) return;
+    if (!d.bucket || !d.file_path) {
+      toast.error("Documento no disponible");
+      return;
+    }
     try {
       const u = await getDocumentBlobUrl(d.bucket, d.file_path);
-      const w = window.open(u, "_blank");
-      if (!w) {
-        // Si el popup está bloqueado, forzamos descarga vía enlace temporal
-        const a = document.createElement("a");
-        a.href = u;
-        a.target = "_blank";
-        a.rel = "noopener";
-        a.click();
-      }
-      // Liberamos la URL al cabo de un rato (el tab ya la habrá cargado)
-      setTimeout(() => URL.revokeObjectURL(u), 60_000);
+      setViewer({ name: d.file_name ?? "Documento", url: u });
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Error");
+      toast.error(e instanceof Error ? e.message : "No se pudo cargar el documento");
     }
   }
 
