@@ -900,6 +900,28 @@ function DocumentsTab({ loanId }: { loanId: string }) {
           </Table>
         )}
       </CardContent>
+      <Dialog
+        open={!!viewer}
+        onOpenChange={(o) => {
+          if (!o) {
+            if (viewer?.url) URL.revokeObjectURL(viewer.url);
+            setViewer(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-5xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-4 w-4" /> {viewer?.name}
+            </DialogTitle>
+          </DialogHeader>
+          {viewer && (
+            <Suspense fallback={<Loader2 className="h-5 w-5 animate-spin" />}>
+              <PdfViewer fileUrl={viewer.url} />
+            </Suspense>
+          )}
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
